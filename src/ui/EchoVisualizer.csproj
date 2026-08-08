@@ -3,10 +3,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <Version>0.1.0.5</Version>
-    <AssemblyVersion>0.1.0.5</AssemblyVersion>
-    <FileVersion>0.1.0.5</FileVersion>
-    <InformationalVersion>0.1.0.5</InformationalVersion>
+    <Version>0.1.0.6</Version>
+    <AssemblyVersion>0.1.0.6</AssemblyVersion>
+    <FileVersion>0.1.0.6</FileVersion>
+    <InformationalVersion>0.1.0.6</InformationalVersion>
     <RootNamespace>EchoVisualizer</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;arm64</Platforms>
