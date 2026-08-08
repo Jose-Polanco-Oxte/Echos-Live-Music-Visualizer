@@ -415,6 +415,38 @@ impl AudioEngine {
             }
         };
         self.condition_frame_energies(adjustment);
+        let metadata = FrameMetadata {
+            short_term_lufs: adjustment.short_term_lufs,
+            gain: adjustment.gain,
+            gamma: adjustment.gamma,
+            master_peak: self.last_master_peak,
+            rms: self.frame.rms,
+            rms_dbfs: -120.0,
+            spectral_centroid_hz: self.frame.spectral_centroid_hz,
+            onset_detected: self.frame.onset_detected,
+            onset_score: 0.0,
+            sequence: 1,
+            capture_timestamp_us: 0,
+            analysis_sample_rate_hz: self.settings.sample_rate,
+            hop_frames: crate::HOP_FRAMES as u32,
+            compute_latency_us: 0,
+            profile_generation: 1,
+            flags: 0,
+            band_count: self.settings.band_count as u32,
+        };
+        let centers: Vec<f32> = self
+            .processor
+            .band_ranges()
+            .iter()
+            .map(|range| range.center_hz())
+            .collect();
+        let _ = self.frame_store.publish(
+            metadata,
+            &self.frame.band_energies,
+            &self.frame.band_energies,
+            &self.frame.band_energies,
+            &centers,
+        );
     }
 
     /// ABI v1 cache update. It never drains capture, executes FFT, or clones
