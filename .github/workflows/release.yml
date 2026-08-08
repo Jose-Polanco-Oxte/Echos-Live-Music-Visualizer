@@ -37,6 +37,9 @@ jobs:
           targets: ${{ matrix.rust_target }}
           components: rustfmt, clippy
 
+      - name: Ensure Target Available (${{ matrix.rust_target }})
+        run: rustup target add ${{ matrix.rust_target }}
+
       - name: Pre-build Rust Core Engine (${{ matrix.target_arch }})
         run: cargo build --manifest-path src/core/Cargo.toml --release --target ${{ matrix.rust_target }}
 
