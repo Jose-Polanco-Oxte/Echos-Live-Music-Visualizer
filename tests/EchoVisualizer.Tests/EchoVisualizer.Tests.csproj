@@ -5,12 +5,25 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Platforms>x64;arm64</Platforms>
+    <PlatformTarget Condition="'$(PlatformTarget)' == ''">x64</PlatformTarget>
+  </PropertyGroup>
+
+  <!-- Rust Core (EchoCore) Build Configuration for FFI Tests -->
+  <PropertyGroup>
     <EchoCoreDirectory>$(MSBuildThisFileDirectory)..\..\src\core\</EchoCoreDirectory>
-    <EchoCoreCargo>$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe</EchoCoreCargo>
+    <!-- Default Cargo Resolution: Checks default rustup path, falls back to PATH 'cargo' -->
+    <EchoCoreCargo Condition="Exists('$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe')">$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe</EchoCoreCargo>
+    <EchoCoreCargo Condition="'$(EchoCoreCargo)' == ''">cargo</EchoCoreCargo>
+    
     <EchoCoreProfile Condition="'$(Configuration)' == 'Release'">release</EchoCoreProfile>
     <EchoCoreProfile Condition="'$(EchoCoreProfile)' == ''">debug</EchoCoreProfile>
-    <EchoCoreCargoArguments Condition="'$(Configuration)' == 'Release'">--release</EchoCoreCargoArguments>
-    <EchoCoreOutput>$(EchoCoreDirectory)target\$(EchoCoreProfile)\echo_core.dll</EchoCoreOutput>
+    
+    <RustTargetTriple Condition="'$(Platform)' == 'arm64'">aarch64-pc-windows-msvc</RustTargetTriple>
+    <RustTargetTriple Condition="'$(RustTargetTriple)' == ''">x86_64-pc-windows-msvc</RustTargetTriple>
+    
+    <EchoCoreCargoArguments Condition="'$(Configuration)' == 'Release'">--release --target $(RustTargetTriple)</EchoCoreCargoArguments>
+    <EchoCoreCargoArguments Condition="'$(Configuration)' != 'Release'">--target $(RustTargetTriple)</EchoCoreCargoArguments>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,12 +47,15 @@
   </ItemGroup>
 
   <Target Name="BuildEchoCoreForFfiTests" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
-    <Error Condition="!Exists('$(EchoCoreCargo)')" Text="Rust stable is required at $(EchoCoreCargo) to execute FFI tests." />
     <Exec Command="&quot;$(EchoCoreCargo)&quot; build --manifest-path &quot;$(EchoCoreDirectory)Cargo.toml&quot; $(EchoCoreCargoArguments)" />
   </Target>
 
-  <Target Name="CopyEchoCoreForFfiTests" AfterTargets="Build" DependsOnTargets="BuildEchoCoreForFfiTests" Condition="'$(DesignTimeBuild)' != 'true'">
-    <Error Condition="!Exists('$(EchoCoreOutput)')" Text="EchoCore native library was not produced at $(EchoCoreOutput)." />
-    <Copy SourceFiles="$(EchoCoreOutput)" DestinationFiles="$(TargetDir)EchoCore.dll" SkipUnchangedFiles="true" />
+  <Target Name="CopyEchoCoreForFfiTests" AfterTargets="Build" BeforeTargets="GetCopyToOutputDirectoryItems;GetCopyToPublishDirectoryItems" DependsOnTargets="BuildEchoCoreForFfiTests" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <ActualEchoCoreOutput Condition="Exists('$(EchoCoreDirectory)target\$(RustTargetTriple)\$(EchoCoreProfile)\echo_core.dll')">$(EchoCoreDirectory)target\$(RustTargetTriple)\$(EchoCoreProfile)\echo_core.dll</ActualEchoCoreOutput>
+      <ActualEchoCoreOutput Condition="'$(ActualEchoCoreOutput)' == '' And Exists('$(EchoCoreDirectory)target\$(EchoCoreProfile)\echo_core.dll')">$(EchoCoreDirectory)target\$(EchoCoreProfile)\echo_core.dll</ActualEchoCoreOutput>
+    </PropertyGroup>
+    <Error Condition="'$(ActualEchoCoreOutput)' == '' Or !Exists('$(ActualEchoCoreOutput)')" Text="EchoCore native library was not produced for FFI tests." />
+    <Copy SourceFiles="$(ActualEchoCoreOutput)" DestinationFiles="$(TargetDir)EchoCore.dll" SkipUnchangedFiles="true" />
   </Target>
 </Project>

@@ -28,6 +28,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Pre-build Rust Core Engine
+        run: cargo build --manifest-path src/core/Cargo.toml --release --target x86_64-pc-windows-msvc
 
       - name: Run Rust Core Unit Tests
         run: cargo test --manifest-path src/core/Cargo.toml

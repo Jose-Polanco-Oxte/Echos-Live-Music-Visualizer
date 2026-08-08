@@ -35,6 +35,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
+          components: rustfmt, clippy
+
+      - name: Pre-build Rust Core Engine (${{ matrix.target_arch }})
+        run: cargo build --manifest-path src/core/Cargo.toml --release --target ${{ matrix.rust_target }}
 
       - name: Extract Tag Version
         id: get_version
