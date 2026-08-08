@@ -71,14 +71,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\*.*" />
+    <Content Include="Assets\**\*.*" />
+    <Content Include="Resources\**\*.*" />
   </ItemGroup>
 
   <Target Name="BuildEchoCore" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
     <Exec Command="&quot;$(EchoCoreCargo)&quot; build --manifest-path &quot;$(EchoCoreDirectory)Cargo.toml&quot; $(EchoCoreCargoArguments)" />
   </Target>
 
-  <Target Name="CopyEchoCore" AfterTargets="Build" BeforeTargets="GetCopyToOutputDirectoryItems;GetCopyToPublishDirectoryItems" DependsOnTargets="BuildEchoCore" Condition="'$(DesignTimeBuild)' != 'true'">
+  <Target Name="CopyEchoCore" AfterTargets="Build" BeforeTargets="GetCopyToOutputDirectoryItems;GetCopyToPublishDirectoryItems;AssignTargetPaths" DependsOnTargets="BuildEchoCore" Condition="'$(DesignTimeBuild)' != 'true'">
     <PropertyGroup>
       <ActualEchoCoreOutput Condition="Exists('$(EchoCoreDirectory)target\$(RustTargetTriple)\$(EchoCoreProfile)\echo_core.dll')">$(EchoCoreDirectory)target\$(RustTargetTriple)\$(EchoCoreProfile)\echo_core.dll</ActualEchoCoreOutput>
       <ActualEchoCoreOutput Condition="'$(ActualEchoCoreOutput)' == '' And Exists('$(EchoCoreDirectory)target\$(EchoCoreProfile)\echo_core.dll')">$(EchoCoreDirectory)target\$(EchoCoreProfile)\echo_core.dll</ActualEchoCoreOutput>
@@ -86,5 +87,12 @@
     <Error Condition="'$(ActualEchoCoreOutput)' == '' Or !Exists('$(ActualEchoCoreOutput)')" Text="EchoCore native library was not produced." />
     <Copy SourceFiles="$(ActualEchoCoreOutput)" DestinationFiles="$(TargetDir)EchoCore.dll" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(ActualEchoCoreOutput)" DestinationFiles="$(PublishDir)EchoCore.dll" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <ItemGroup>
+      <None Include="$(ActualEchoCoreOutput)">
+        <Link>EchoCore.dll</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </None>
+    </ItemGroup>
   </Target>
 </Project>
