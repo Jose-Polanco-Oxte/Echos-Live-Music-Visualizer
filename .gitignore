@@ -40,9 +40,8 @@ BundleArtifacts/
 secrets/
 
 # Agent & Internal directories
-.agents/
-agents/
 docs/private/
+.agents/
 docs/internal/
 docs/secret/
 docs/industrial/
