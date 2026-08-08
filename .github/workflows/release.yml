@@ -99,7 +99,7 @@ jobs:
           Write-Host "Created release archive: $zipPath"
 
       - name: Upload Build Artifact for Packaging Job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-zip-${{ matrix.target_arch }}
           path: artifacts/*.zip
