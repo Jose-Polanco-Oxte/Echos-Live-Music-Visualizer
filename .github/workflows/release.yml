@@ -18,8 +18,10 @@ jobs:
       matrix:
         include:
           - target_arch: win-x64
+            dotnet_platform: x64
             rust_target: x86_64-pc-windows-msvc
           - target_arch: win-arm64
+            dotnet_platform: arm64
             rust_target: aarch64-pc-windows-msvc
 
     steps:
@@ -63,6 +65,7 @@ jobs:
           dotnet publish src/ui/EchoVisualizer.csproj `
             -c Release `
             -r ${{ matrix.target_arch }} `
+            -p:Platform=${{ matrix.dotnet_platform }} `
             -p:BuildingForGitHub=true `
             -p:Version="${{ env.VERSION }}" `
             -p:AssemblyVersion="${{ env.VERSION }}" `

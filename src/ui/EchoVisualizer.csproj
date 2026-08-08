@@ -10,6 +10,7 @@
     <RootNamespace>EchoVisualizer</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;arm64</Platforms>
+    <PlatformTarget Condition="'$(RuntimeIdentifier)' == 'win-arm64' Or '$(Platform)' == 'arm64' Or '$(Platform)' == 'ARM64'">arm64</PlatformTarget>
     <PlatformTarget Condition="'$(PlatformTarget)' == ''">x64</PlatformTarget>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
