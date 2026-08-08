@@ -5,6 +5,15 @@ All notable changes to **Echo Live Music Visualizer** will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0.5] - 2026-08-08
+
+### Added
+- Declared explicit PerMonitorV2 High-DPI scaling awareness in `app.manifest` for high-resolution display rendering.
+
+### Fixed
+- Fixed GitHub Actions CI toolchain race condition by pre-building Rust `echo_core` library sequentially before test execution.
+- Resolved zero-frame ABI v2 lease availability issue in headless CI environments without physical audio hardware.
+
 ## [0.1.0.4] - 2026-08-07
 
 ### Added
