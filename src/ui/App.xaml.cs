@@ -1,13 +1,30 @@
 using Microsoft.UI.Xaml;
+using System;
+using System.Runtime.InteropServices;
 
 namespace EchoVisualizer;
 
 public partial class App : Application
 {
+    [DllImport("user32.dll")]
+    private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiAwarenessContext);
+
+    private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
+
     private Window? _window;
 
     public App()
     {
+        // Fix DPI scaling on high-DPI monitors
+        try
+        {
+            SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        }
+        catch
+        {
+            // Ignore if not supported on this system
+        }
+
         InitializeComponent();
         UnhandledException += (_, eventArgs) =>
         {
