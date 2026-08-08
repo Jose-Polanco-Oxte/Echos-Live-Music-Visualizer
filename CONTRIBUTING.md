@@ -1,53 +1,53 @@
-# Contribuir a Echo Visualizer
+# Contributing to Echo Visualizer
 
-¡Gracias por tu interés en contribuir a Echo Visualizer! Este proyecto está estructurado como una aplicación de escritorio nativa para Windows con separación estricta entre el motor DSP en Rust (`src/core/`) y la interfaz de usuario WinUI 3 en C# (`src/ui/`).
-
----
-
-## 🛠️ Configuración del Entorno de Desarrollo
-
-### Requisitos Previos
-1. **Windows 10 (1809+) o Windows 11** (x64 / ARM64).
-2. **Visual Studio 2022 / 2026** con la carga de trabajo *Desarrollo de escritorio con .NET*.
-3. **.NET 8 SDK** (definido en `global.json`).
-4. **Toolchain de Rust (Stable)** con target `x86_64-pc-windows-msvc` (y opcionalmente `aarch64-pc-windows-msvc`).
+Thank you for your interest in contributing to Echo Visualizer! This repository is built as a native Windows desktop application featuring strict architectural separation between the high-performance Rust DSP core (`src/core/`) and the WinUI 3 C# application shell (`src/ui/`).
 
 ---
 
-## 🚀 Flujo de Trabajo y Ramas
+## 🛠️ Development Environment Setup
 
-1. Crea una rama descriptiva a partir de `dev`:
+### Prerequisites
+1. **Windows 10 (1809+) or Windows 11** (x64 / ARM64).
+2. **Visual Studio 2022 / 2026** with the *.NET Desktop Development* workload.
+3. **.NET 8 SDK** (configured in `global.json`).
+4. **Rust Stable Toolchain** with target `x86_64-pc-windows-msvc` (and optionally `aarch64-pc-windows-msvc`).
+
+---
+
+## 🚀 Workflow & Branching Strategy
+
+1. Create a descriptive feature branch from `dev` or `main`:
    ```bash
-   git checkout -b feature/mi-nueva-funcionalidad
+   git checkout -b feature/my-new-feature
    ```
-2. Realiza cambios enfocados y atómicos.
-3. Ejecuta la suite de pruebas unitarias relevante antes de enviar un Pull Request:
+2. Keep commits atomic, well-tested, and well-documented.
+3. Run the automated test suites prior to opening a Pull Request:
    ```powershell
-   # Pruebas de Rust Core
+   # Rust Core DSP unit tests
    cargo test --manifest-path src/core/Cargo.toml
 
-   # Pruebas de C# UI & FFI
+   # C# UI & FFI unit tests
    dotnet test tests/EchoVisualizer.Tests/EchoVisualizer.Tests.csproj -c Release -p:Platform=x64
    ```
-4. Abre un Pull Request dirigido a la rama `dev`.
+4. Open a Pull Request targeting the default branch.
 
 ---
 
-## 🧹 Higiene del Repositorio
+## 🧹 Repository Hygiene
 
-- **Archivos generados**: No commitees binarios compilados (`.dll`, `.exe`, `.msix`), carpetas de salida (`bin/`, `obj/`, `artifacts/`, `target/`), o archivos temporales del IDE (`.vs/`).
-- **Secretos y Certificados**: Nunca almacenes claves privadas (`.pfx`), certificados de firma local (`.cer`), o tokens en el repositorio. Los workflows de CI/CD utilizan GitHub Actions Secrets de forma opcional.
-- **Trazabilidad**: Si modificas algoritmos DSP o parámetros de escalado espectral, actualiza la documentación correspondiente en `docs/public/spec/` y añade la trazabilidad necesaria.
+- **Generated Artifacts**: Do not commit compiled binaries (`.dll`, `.exe`, `.msix`), output folders (`bin/`, `obj/`, `artifacts/`, `target/`), or IDE state files (`.vs/`).
+- **Secrets & Certificates**: Never commit private keys (`.pfx`), local developer certificates (`.cer`), or secret tokens to Git. CI/CD pipelines use GitHub Actions Secrets securely.
+- **Traceability**: When modifying DSP algorithms, band scaling formulas, or audio conditioning modes, update the specification documents under `docs/public/spec/` and append traceability records in `docs/public/traceability/`.
 
 ---
 
-## 🏗️ Perfiles de Compilación Local
+## 🏗️ Local Build Profiles
 
-- **Publicación Unpackaged (GitHub Releases)**:
+- **Standalone Unpackaged Build (GitHub Releases)**:
   ```powershell
   dotnet publish src/ui/EchoVisualizer.csproj -c Release -r win-x64 -p:BuildingForGitHub=true
   ```
-- **Empaquetado MSIX (Microsoft Store)**:
+- **Packaged MSIX Build (Microsoft Store)**:
   ```powershell
   dotnet publish src/ui/EchoVisualizer.csproj -c Release -r win-x64 -p:BuildingForStore=true -p:Platform=x64
   ```
