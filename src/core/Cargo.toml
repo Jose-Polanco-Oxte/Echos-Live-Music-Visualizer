@@ -1,0 +1,24 @@
+[package]
+name = "echo_core"
+version = "0.1.0"
+edition = "2021"
+description = "Real-time DSP core for Echo Visualizer"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rustfft = "6.2"
+ringbuf = "0.4"
+rubato = "0.15"
+thiserror = "2"
+wasapi = "0.23"
+
+[dev-dependencies]
+approx = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

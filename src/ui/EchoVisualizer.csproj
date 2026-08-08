@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <Version>0.1.0.4</Version>
+    <AssemblyVersion>0.1.0.4</AssemblyVersion>
+    <FileVersion>0.1.0.4</FileVersion>
+    <InformationalVersion>0.1.0.4</InformationalVersion>
+    <RootNamespace>EchoVisualizer</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;arm64</Platforms>
+    <PlatformTarget Condition="'$(PlatformTarget)' == ''">x64</PlatformTarget>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- GitHub Unpackaged Self-Contained Profile -->
+  <PropertyGroup Condition="'$(BuildingForGitHub)' == 'true' Or '$(WindowsPackageType)' == 'None'">
+    <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <AppxPackage>false</AppxPackage>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <PublishDir>$(MSBuildThisFileDirectory)..\..\artifacts\github\$(RuntimeIdentifier)\</PublishDir>
+  </PropertyGroup>
+
+  <!-- Store Packaged MSIX Profile (Default) -->
+  <PropertyGroup Condition="'$(BuildingForGitHub)' != 'true' And '$(WindowsPackageType)' != 'None'">
+    <WindowsPackageType>MSIX</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <MicrosoftWindowsSDKBuildToolsMSIXPackageVersion>1.7.20250829.1</MicrosoftWindowsSDKBuildToolsMSIXPackageVersion>
+    <AppxPackage>true</AppxPackage>
+    <AppxBundle>Always</AppxBundle>
+    <AppxBundlePlatforms Condition="'$(RuntimeIdentifier)' == 'win-arm64' Or '$(Platform)' == 'arm64'">arm64</AppxBundlePlatforms>
+    <AppxBundlePlatforms Condition="'$(AppxBundlePlatforms)' == ''">x64</AppxBundlePlatforms>
+    <AppxPackageDir>$(MSBuildThisFileDirectory)..\..\artifacts\store\</AppxPackageDir>
+    <AppxPackageSigningEnabled Condition="'$(SignMsix)' == 'true'">true</AppxPackageSigningEnabled>
+    <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+  </PropertyGroup>
+
+  <!-- Rust Core (EchoCore) Build Configuration -->
+  <PropertyGroup>
+    <EchoCoreDirectory>$(MSBuildThisFileDirectory)..\core\</EchoCoreDirectory>
+    <!-- Default Cargo Resolution: Checks default rustup path, falls back to PATH 'cargo' -->
+    <EchoCoreCargo Condition="Exists('$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe')">$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe</EchoCoreCargo>
+    <EchoCoreCargo Condition="'$(EchoCoreCargo)' == ''">cargo</EchoCoreCargo>
+    
+    <EchoCoreProfile Condition="'$(Configuration)' == 'Release'">release</EchoCoreProfile>
+    <EchoCoreProfile Condition="'$(EchoCoreProfile)' == ''">debug</EchoCoreProfile>
+    
+    <!-- Target triple resolution for x64 vs arm64 -->
+    <RustTargetTriple Condition="'$(RuntimeIdentifier)' == 'win-arm64' Or '$(Platform)' == 'arm64'">aarch64-pc-windows-msvc</RustTargetTriple>
+    <RustTargetTriple Condition="'$(RustTargetTriple)' == ''">x86_64-pc-windows-msvc</RustTargetTriple>
+    
+    <EchoCoreCargoArguments Condition="'$(Configuration)' == 'Release'">--release --target $(RustTargetTriple)</EchoCoreCargoArguments>
+    <EchoCoreCargoArguments Condition="'$(Configuration)' != 'Release'">--target $(RustTargetTriple)</EchoCoreCargoArguments>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260209005" />
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\*.*" />
+  </ItemGroup>
+
+  <Target Name="BuildEchoCore" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="&quot;$(EchoCoreCargo)&quot; build --manifest-path &quot;$(EchoCoreDirectory)Cargo.toml&quot; $(EchoCoreCargoArguments)" />
+  </Target>
+
+  <Target Name="CopyEchoCore" AfterTargets="Build" BeforeTargets="GetCopyToOutputDirectoryItems;GetCopyToPublishDirectoryItems" DependsOnTargets="BuildEchoCore" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <ActualEchoCoreOutput Condition="Exists('$(EchoCoreDirectory)target\$(RustTargetTriple)\$(EchoCoreProfile)\echo_core.dll')">$(EchoCoreDirectory)target\$(RustTargetTriple)\$(EchoCoreProfile)\echo_core.dll</ActualEchoCoreOutput>
+      <ActualEchoCoreOutput Condition="'$(ActualEchoCoreOutput)' == '' And Exists('$(EchoCoreDirectory)target\$(EchoCoreProfile)\echo_core.dll')">$(EchoCoreDirectory)target\$(EchoCoreProfile)\echo_core.dll</ActualEchoCoreOutput>
+    </PropertyGroup>
+    <Error Condition="'$(ActualEchoCoreOutput)' == '' Or !Exists('$(ActualEchoCoreOutput)')" Text="EchoCore native library was not produced." />
+    <Copy SourceFiles="$(ActualEchoCoreOutput)" DestinationFiles="$(TargetDir)EchoCore.dll" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(ActualEchoCoreOutput)" DestinationFiles="$(PublishDir)EchoCore.dll" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+  </Target>
+</Project>

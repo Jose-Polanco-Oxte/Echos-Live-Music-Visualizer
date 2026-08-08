@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentación y especificaciones
+    url: https://github.com/your-org/your-repo/wiki
+    about: Consulta la documentación técnica antes de abrir una incidencia.

@@ -1,0 +1,55 @@
+# Rust
+/target/
+**/target/
+
+# .NET / Visual Studio
+[Bb]in/
+[Oo]bj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+*.pdb
+*.db
+*.opendb
+*.pp.xml
+Generated Files/
+
+# MSIX and packaging outputs
+artifacts/
+AppPackages/
+BundleArtifacts/
+*.msix
+*.msixbundle
+*.msixupload
+*.appx
+*.appxbundle
+*.pfx
+*.p12
+*.pem
+*.cer
+*.snk
+*.key
+
+# Environment and secrets
+.env
+.env.*
+secrets/
+
+# Agent & Internal directories
+.agents/
+agents/
+docs/private/
+docs/internal/
+docs/secret/
+docs/industrial/
+
+# Logs and test outputs
+*.log
+*.tmp
+*.cache
+[Tt]est[Rr]esult*
+TestResults/

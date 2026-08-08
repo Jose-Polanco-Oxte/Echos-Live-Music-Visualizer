@@ -1,0 +1,42 @@
+name: Quality Gate (CI)
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Build, Lint & Test
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Setup Rust Stable Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Run Rust Core Unit Tests
+        run: cargo test --manifest-path src/core/Cargo.toml
+
+      - name: Run C# UI & FFI Unit Tests
+        run: dotnet test tests/EchoVisualizer.Tests/EchoVisualizer.Tests.csproj -c Release -p:Platform=x64
+
+      - name: Validate Dry Compilation (GitHub Unpackaged Profile)
+        run: dotnet build src/ui/EchoVisualizer.csproj -c Release -r win-x64 -p:BuildingForGitHub=true
+
+      - name: Validate Dry Compilation (Store Packaged Profile)
+        run: dotnet build src/ui/EchoVisualizer.csproj -c Release -r win-x64 -p:BuildingForStore=true

@@ -1,0 +1,51 @@
+<Page
+    x:Class="EchoVisualizer.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:EchoVisualizer.Controls"
+    Background="{ThemeResource BrushBgBase}">
+
+    <Grid Padding="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,24">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <Button x:Name="BackButton"
+                        Style="{StaticResource CircularButtonStyle}"
+                        Click="BackButton_Click">
+                    <FontIcon Glyph="&#xE72B;" FontSize="14" Foreground="{ThemeResource BrushTextPrimary}" />
+                </Button>
+                <TextBlock Text="Configuración Global" FontSize="20" FontWeight="SemiBold" Foreground="{ThemeResource BrushTextPrimary}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Settings Content -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="24" MaxWidth="600" HorizontalAlignment="Left">
+
+                <!-- Audio Source Section -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Dispositivo de Audio" FontSize="16" FontWeight="SemiBold" Foreground="{ThemeResource BrushTextPrimary}" />
+                    <TextBlock Text="Selecciona la fuente de captura de audio activa del sistema." FontSize="12" Foreground="{ThemeResource BrushTextSecondary}" />
+                    <ComboBox x:Name="AudioDeviceSelector" DisplayMemberPath="Name" SelectionChanged="AudioDeviceSelector_SelectionChanged" HorizontalAlignment="Stretch" />
+                </StackPanel>
+
+                <!-- Interface Theme Section -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Tema de Interfaz" FontSize="16" FontWeight="SemiBold" Foreground="{ThemeResource BrushTextPrimary}" />
+                    <TextBlock Text="Personaliza el esquema visual global de la aplicación." FontSize="12" Foreground="{ThemeResource BrushTextSecondary}" />
+                    <ComboBox x:Name="ThemeSelector" SelectionChanged="ThemeSelector_SelectionChanged" HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Sistema" />
+                        <ComboBoxItem Content="Claro" />
+                        <ComboBoxItem Content="Noche (Oscuro)" />
+                    </ComboBox>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

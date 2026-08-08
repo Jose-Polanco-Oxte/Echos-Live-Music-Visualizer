@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.8.12023.21
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EchoVisualizer", "src\\ui\\EchoVisualizer.csproj", "{7A5E164B-DDA1-4441-AE0E-56E36F55D718}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EchoVisualizer.Tests", "tests\\EchoVisualizer.Tests\\EchoVisualizer.Tests.csproj", "{6E127A4B-616F-4CE1-B2C9-8B724E9B9892}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7A5E164B-DDA1-4441-AE0E-56E36F55D718}.Debug|x64.ActiveCfg = Debug|x64
+		{7A5E164B-DDA1-4441-AE0E-56E36F55D718}.Debug|x64.Build.0 = Debug|x64
+		{7A5E164B-DDA1-4441-AE0E-56E36F55D718}.Release|x64.ActiveCfg = Release|x64
+		{7A5E164B-DDA1-4441-AE0E-56E36F55D718}.Release|x64.Build.0 = Release|x64
+		{6E127A4B-616F-4CE1-B2C9-8B724E9B9892}.Debug|x64.ActiveCfg = Debug|x64
+		{6E127A4B-616F-4CE1-B2C9-8B724E9B9892}.Debug|x64.Build.0 = Debug|x64
+		{6E127A4B-616F-4CE1-B2C9-8B724E9B9892}.Release|x64.ActiveCfg = Release|x64
+		{6E127A4B-616F-4CE1-B2C9-8B724E9B9892}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+EndGlobal

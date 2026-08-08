@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EchoCoreDirectory>$(MSBuildThisFileDirectory)..\..\src\core\</EchoCoreDirectory>
+    <EchoCoreCargo>$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe</EchoCoreCargo>
+    <EchoCoreProfile Condition="'$(Configuration)' == 'Release'">release</EchoCoreProfile>
+    <EchoCoreProfile Condition="'$(EchoCoreProfile)' == ''">debug</EchoCoreProfile>
+    <EchoCoreCargoArguments Condition="'$(Configuration)' == 'Release'">--release</EchoCoreCargoArguments>
+    <EchoCoreOutput>$(EchoCoreDirectory)target\$(EchoCoreProfile)\echo_core.dll</EchoCoreOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\ui\Audio\AudioFrame.cs" Link="Audio\AudioFrame.cs" />
+    <Compile Include="..\..\src\ui\Visualizers\SpectralBarMath.cs" Link="Visualizers\SpectralBarMath.cs" />
+    <Compile Include="..\..\src\ui\Audio\AudioCoreService.cs" Link="Audio\AudioCoreService.cs" />
+    <Compile Include="..\..\src\ui\Audio\EchoCoreNative.cs" Link="Audio\EchoCoreNative.cs" />
+    <Compile Include="..\..\src\ui\ViewModels\VisualizerViewModel.cs" Link="ViewModels\VisualizerViewModel.cs" />
+    <Compile Include="..\..\src\ui\ViewModels\CatalogViewModel.cs" Link="ViewModels\CatalogViewModel.cs" />
+    <Compile Include="..\..\src\ui\ViewModels\SettingsViewModel.cs" Link="ViewModels\SettingsViewModel.cs" />
+    <Compile Include="..\..\src\ui\Services\UserSettingsService.cs" Link="Services\UserSettingsService.cs" />
+  </ItemGroup>
+
+  <Target Name="BuildEchoCoreForFfiTests" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(EchoCoreCargo)')" Text="Rust stable is required at $(EchoCoreCargo) to execute FFI tests." />
+    <Exec Command="&quot;$(EchoCoreCargo)&quot; build --manifest-path &quot;$(EchoCoreDirectory)Cargo.toml&quot; $(EchoCoreCargoArguments)" />
+  </Target>
+
+  <Target Name="CopyEchoCoreForFfiTests" AfterTargets="Build" DependsOnTargets="BuildEchoCoreForFfiTests" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(EchoCoreOutput)')" Text="EchoCore native library was not produced at $(EchoCoreOutput)." />
+    <Copy SourceFiles="$(EchoCoreOutput)" DestinationFiles="$(TargetDir)EchoCore.dll" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

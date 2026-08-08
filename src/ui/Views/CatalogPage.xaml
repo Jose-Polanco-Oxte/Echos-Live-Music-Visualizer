@@ -1,0 +1,65 @@
+<Page
+    x:Class="EchoVisualizer.Views.CatalogPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:EchoVisualizer.Controls"
+    Background="{ThemeResource BrushBgBase}">
+
+    <Grid Padding="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <Button x:Name="BackButton"
+                        Style="{StaticResource CircularButtonStyle}"
+                        Click="BackButton_Click">
+                    <FontIcon Glyph="&#xE72B;" FontSize="14" Foreground="{ThemeResource BrushTextPrimary}" />
+                </Button>
+                <TextBlock Text="Catálogo de Visualizadores" FontSize="20" FontWeight="SemiBold" Foreground="{ThemeResource BrushTextPrimary}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Search & Filter Bar -->
+        <Grid Grid.Row="1" Margin="0,0,0,24">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <AutoSuggestBox Grid.Column="0"
+                             PlaceholderText="Buscar visualizadores..."
+                             QueryIcon="Find"
+                             TextChanged="SearchBox_TextChanged" />
+
+            <ToggleButton x:Name="FavoritesFilterButton"
+                          Grid.Column="1"
+                          Margin="12,0,0,0"
+                          Content="★ Sólo favoritos"
+                          Style="{StaticResource ToolbarPillToggleButtonStyle}"
+                          Click="FavoritesFilterButton_Click" />
+        </Grid>
+
+        <!-- Grid of Presets -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <ItemsRepeater x:Name="CatalogGrid">
+                <ItemsRepeater.Layout>
+                    <UniformGridLayout MinItemWidth="184" MinItemHeight="120" MinRowSpacing="16" MinColumnSpacing="16" ItemsStretch="Fill" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate>
+                        <controls:PresetCard PresetTitle="{Binding Name}"
+                                             IsSelectedPreset="{Binding IsSelected}"
+                                             IsFavoritePreset="{Binding IsFavorite}"
+                                             CardSize="Large"
+                                             Tapped="PresetCard_Tapped" />
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+        </ScrollViewer>
+    </Grid>
+</Page>
