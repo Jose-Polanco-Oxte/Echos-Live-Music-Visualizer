@@ -337,4 +337,28 @@ mod tests {
         assert_eq!(unsafe { *lease.raw.add(2) }, 3.0);
         lease.release();
     }
+
+    #[test]
+    fn stale_band_length_publications_are_safely_dropped() {
+        // Defense in depth: after the active band count changes, a publication
+        // still carrying the prior band length must be rejected (not written
+        // partially) and counted as dropped rather than corrupting a slot.
+        let store = FrameStore::new(3);
+        assert!(store.set_band_count(12));
+        let stale = [1.0_f32, 2.0, 3.0];
+        let dropped_before = store.dropped_publications();
+        assert!(!store.publish(
+            FrameMetadata {
+                sequence: 1,
+                band_count: 3,
+                ..FrameMetadata::default()
+            },
+            &stale,
+            &stale,
+            &stale,
+            &[20.0, 30.0, 40.0],
+        ));
+        assert_eq!(store.dropped_publications(), dropped_before + 1);
+        assert_eq!(store.published_count(), 0);
+    }
 }

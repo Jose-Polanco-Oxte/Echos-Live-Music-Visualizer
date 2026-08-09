@@ -114,16 +114,40 @@ impl DspWorker {
         band_count: usize,
         config: Arc<WorkerConfig>,
     ) -> Result<Self, String> {
+        // Normal startup / set_audio_device: processing begins immediately, so
+        // open the gate as soon as the worker thread is prepared.
+        let (worker, start_gate) = Self::prepare(capture, store, band_count, config)?;
+        start_gate.store(true, Ordering::Release);
+        Ok(worker)
+    }
+
+    /// Spawns a worker whose processing loop is paused until its returned gate
+    /// is set to `true`. Reconfiguration uses this so a replacement worker never
+    /// processes or publishes against a partially-committed DSP/frame-store
+    /// configuration.
+    fn prepare(
+        capture: LoopbackCapture,
+        store: Arc<FrameStore>,
+        band_count: usize,
+        config: Arc<WorkerConfig>,
+    ) -> Result<(Self, Arc<AtomicBool>), String> {
+        let start_gate = Arc::new(AtomicBool::new(false));
+        let worker_gate = Arc::clone(&start_gate);
         let stop_requested = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop_requested);
         let thread = thread::Builder::new()
             .name("echo-dsp-worker".to_owned())
-            .spawn(move || dsp_worker_loop(capture, store, band_count, config, worker_stop))
+            .spawn(move || {
+                dsp_worker_loop(capture, store, band_count, config, worker_gate, worker_stop)
+            })
             .map_err(|error| format!("could not start DSP worker: {error}"))?;
-        Ok(Self {
-            stop_requested,
-            thread: Some(thread),
-        })
+        Ok((
+            Self {
+                stop_requested,
+                thread: Some(thread),
+            },
+            start_gate,
+        ))
     }
 }
 
@@ -141,8 +165,18 @@ fn dsp_worker_loop(
     store: Arc<FrameStore>,
     band_count: usize,
     config: Arc<WorkerConfig>,
+    start_gate: Arc<AtomicBool>,
     stop_requested: Arc<AtomicBool>,
 ) {
+    // Wait for reconfiguration to commit before consuming capture. This keeps a
+    // replacement worker from publishing with a band count that does not yet
+    // match the frame store's active configuration.
+    while !start_gate.load(Ordering::Acquire) && !stop_requested.load(Ordering::Acquire) {
+        thread::sleep(Duration::from_millis(1));
+    }
+    if stop_requested.load(Ordering::Acquire) {
+        return;
+    }
     let Ok(mut scheduler) = DspScheduler::new(BandProfile::Erb, band_count) else {
         return;
     };
@@ -561,23 +595,35 @@ impl AudioEngine {
     }
 
     fn reconfigure(&mut self, settings: DspSettings) -> Result<(), String> {
+        // 1. Prepare: validate the new processor configuration and, when the
+        //    engine owns a live capture worker, build its replacement (paused).
+        //    Offline engines (dsp_worker == None) never touch WASAPI here, so a
+        //    valid reconfiguration succeeds without any audio endpoint.
         let processor = DspProcessor::new(settings.clone()).map_err(|error| error.to_string())?;
 
-        // If an active dsp_worker is present, try to restart/reconfigure it first
-        // so that capture failure doesn't leave the DSP state half-updated or fail
-        // configuration validation tests when hardware capture is unavailable.
-        if self.dsp_worker.is_some() {
-            let capture = LoopbackCapture::start(settings.frame_size, self.audio_device_id.clone())?;
-            let replacement = DspWorker::start(
+        let prepared = if self.dsp_worker.is_some() {
+            let capture =
+                LoopbackCapture::start(settings.frame_size, self.audio_device_id.clone())?;
+            let (replacement, start_gate) = DspWorker::prepare(
                 capture,
                 Arc::clone(&self.frame_store),
                 settings.band_count,
                 Arc::clone(&self.worker_config),
-            );
-            let new_worker = replacement?;
-            let _ = self.dsp_worker.replace(new_worker);
-        }
+            )?;
+            Some((replacement, start_gate))
+        } else {
+            None
+        };
 
+        // 2. Quiescence barrier: no fallible preparation remains. Detach the old
+        //    worker and join it so it cannot publish to the shared FrameStore while
+        //    that store transitions to the new band count. This is the boundary that
+        //    guarantees no worker observes a partially-committed cache.
+        let previous_worker = self.dsp_worker.take();
+        drop(previous_worker);
+
+        // 3. Commit: no fallible worker/capture preparation remains, and no worker
+        //    can observe the shared state transition below.
         self.silence.resize(settings.frame_size, 0.0);
         self.frame = ProcessedFrame::with_band_count(settings.band_count);
         self.settings = settings;
@@ -586,20 +632,14 @@ impl AudioEngine {
         self.master_peak.reset();
         self.frame_store.set_band_count(self.settings.band_count);
         self.process_silence();
-        Ok(())
-    }
 
-    #[allow(dead_code)]
-    fn restart_worker(&mut self) -> Result<(), String> {
-        let capture =
-            LoopbackCapture::start(self.settings.frame_size, self.audio_device_id.clone())?;
-        let replacement = DspWorker::start(
-            capture,
-            Arc::clone(&self.frame_store),
-            self.settings.band_count,
-            Arc::clone(&self.worker_config),
-        );
-        replace_worker_transactionally(&mut self.dsp_worker, replacement)
+        // 4. Activate: the engine acquires ownership of the prepared worker before
+        //    releasing its gate, so it only starts after commit is complete.
+        if let Some((replacement, start_gate)) = prepared {
+            self.dsp_worker = Some(replacement);
+            start_gate.store(true, Ordering::Release);
+        }
+        Ok(())
     }
 
     fn set_audio_device(&mut self, device_id: Option<String>) -> Result<(), String> {
@@ -1257,15 +1297,56 @@ mod tests {
 
     #[test]
     fn reconfiguration_validates_values_and_exposes_error() {
-        let handle = init_audio_engine(48_000, 1_024);
+        let mut engine = Box::new(offline_engine());
+        let handle = (&mut *engine as *mut AudioEngine).cast::<c_void>();
+
         assert_eq!(set_band_configuration(handle, 12, 2), 1);
+        assert_eq!(engine.settings.band_count, 12);
+
         assert_eq!(set_band_configuration(handle, 2, 2), 0);
+        assert_eq!(engine.settings.band_count, 12);
+
         let mut buffer = [0_i8; 256];
         assert_eq!(
             unsafe { get_last_error(handle, buffer.as_mut_ptr(), buffer.len() as u32) },
             ERROR_BUFFER_WRITTEN
         );
-        unsafe { destroy_audio_engine(handle) };
+    }
+
+    #[test]
+    fn reconfigure_offline_engine_does_not_depend_on_wasapi() {
+        // Regression: an engine with no capture worker (dsp_worker == None) must
+        // accept a valid FFI reconfiguration even when no WASAPI endpoint exists
+        // (e.g. on a headless CI runner).
+        let mut engine = Box::new(offline_engine());
+        assert!(engine.dsp_worker.is_none());
+        let handle = (&mut *engine as *mut AudioEngine).cast::<c_void>();
+
+        assert_eq!(set_band_configuration(handle, 12, 2), 1);
+        assert_eq!(engine.settings.band_count, 12);
+        assert_eq!(engine.frame.band_energies.len(), 12);
+        assert!(engine.dsp_worker.is_none());
+
+        assert_eq!(set_band_configuration(handle, 2, 2), 0);
+        assert_eq!(engine.settings.band_count, 12);
+        let mut buffer = [0_i8; 256];
+        assert_eq!(
+            unsafe { get_last_error(handle, buffer.as_mut_ptr(), buffer.len() as u32) },
+            ERROR_BUFFER_WRITTEN
+        );
+    }
+
+    #[test]
+    fn reconfigure_invalid_band_configuration_preserves_previous_state() {
+        // A rejected reconfiguration must leave the engine's usable DSP state
+        // unchanged, including while there is no capture worker at all.
+        let mut engine = Box::new(offline_engine());
+        let handle = (&mut *engine as *mut AudioEngine).cast::<c_void>();
+        assert_eq!(set_band_configuration(handle, 12, 2), 1);
+        assert_eq!(set_band_configuration(handle, 10, 2), 1);
+        assert_eq!(set_band_configuration(handle, 2, 2), 0);
+        assert_eq!(engine.settings.band_count, 10);
+        assert_eq!(engine.frame.band_energies.len(), 10);
     }
 
     #[test]
