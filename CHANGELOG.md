@@ -5,6 +5,26 @@ All notable changes to **Echo Live Music Visualizer** will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0.19] - 2026-08-09
+### Fixed
+- Fixed `AudioEngine::reconfigure` to be transactional regarding the WASAPI
+  capture worker restart: a replacement worker is paused behind a start gate
+  until the new band count and frame-store state are fully committed, so the
+  engine never publishes against a partially-committed configuration.
+- Fixed reconfiguration validation on headless/CI machines without an audio
+  endpoint: an offline engine (no capture worker) now accepts valid
+  reconfigurations, and rejected band configurations preserve the previous DSP
+  state.
+- Hardened `FrameStore` against stale band-length publications by rejecting
+  (and counting as dropped) frames that carry a band count different from the
+  active store configuration.
+
+### Release metrics
+- Verified defects resolved: 1.
+- Unique release files affected: 8.
+- Build increment: `max(1, floor(8 / 10)) = 1`.
+- Calculated version: `0.2.0.18 -> 0.2.0.19`.
+
 ## [0.2.0.18] - 2026-08-08
 ### Added
 - Tag `WindowsAppSdkUndockedRegFreeWinRTInitialize` in `EchoVisualizer.csproj` with `true` value.
