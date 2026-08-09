@@ -12,7 +12,7 @@ use std::{
         Arc,
     },
     thread::{self, JoinHandle},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use ringbuf::traits::{Consumer, Observer, Producer};
@@ -31,6 +31,7 @@ const MAX_CAPTURE_FRAME_SIZE: usize = 1_024;
 pub const HOP_FRAMES_PER_CHANNEL: usize = 512;
 pub const MAX_CAPTURE_CHANNELS: usize = 8;
 const HOP_QUEUE_CAPACITY: usize = 32;
+const CAPTURE_START_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// RF1.1 fixed-size multichannel quantum. `samples[channel][frame]` is stored
 /// inline in the SPSC ring: pushing and consuming a hop performs no heap
@@ -110,9 +111,9 @@ pub struct CapturedBlock {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AudioDeviceKind {
+pub enum AudioDeviceKind {
     /// A render endpoint used with WASAPI's loopback stream flag.
-    LoopbackRender,
+    RenderLoopback,
     /// A capture endpoint such as a microphone, line-in or virtual input.
     DirectCapture,
 }
@@ -122,7 +123,7 @@ pub struct AudioDevice {
     pub id: String,
     pub name: String,
     pub is_default: bool,
-    kind: AudioDeviceKind,
+    pub kind: AudioDeviceKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -164,6 +165,7 @@ impl LoopbackCapture {
         let worker_stop = Arc::clone(&stop_requested);
         let telemetry = CaptureTelemetry::shared();
         let worker_telemetry = Arc::clone(&telemetry);
+        let (startup_sender, startup_receiver) = mpsc::sync_channel(1);
         let thread = thread::Builder::new()
             .name("echo-wasapi-loopback".to_owned())
             .spawn(move || {
@@ -174,9 +176,29 @@ impl LoopbackCapture {
                     frame_size,
                     source,
                     worker_telemetry,
+                    startup_sender,
                 )
             })
             .map_err(|error| format!("could not start WASAPI capture thread: {error}"))?;
+
+        match startup_receiver.recv_timeout(CAPTURE_START_TIMEOUT) {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                stop_requested.store(true, Ordering::Release);
+                let _ = thread.join();
+                return Err(error);
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                stop_requested.store(true, Ordering::Release);
+                let _ = thread.join();
+                return Err("WASAPI capture startup timed out".to_owned());
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                stop_requested.store(true, Ordering::Release);
+                let _ = thread.join();
+                return Err("WASAPI capture worker ended during startup".to_owned());
+            }
+        }
 
         Ok(Self {
             consumer,
@@ -261,7 +283,7 @@ fn capture_source_for_device_id(device_id: &str) -> Result<CaptureSource, String
 fn source_from_devices(devices: &[AudioDevice], device_id: &str) -> Result<CaptureSource, String> {
     match devices.iter().find(|device| device.id == device_id) {
         Some(AudioDevice {
-            kind: AudioDeviceKind::LoopbackRender,
+            kind: AudioDeviceKind::RenderLoopback,
             ..
         }) => Ok(CaptureSource::RenderLoopback(device_id.to_owned())),
         Some(AudioDevice {
@@ -288,6 +310,7 @@ fn capture_loop(
     frame_size: usize,
     source: CaptureSource,
     telemetry: Arc<CaptureTelemetry>,
+    startup_sender: mpsc::SyncSender<Result<(), String>>,
 ) {
     let result = capture_loop_inner(
         &mut producer,
@@ -296,8 +319,10 @@ fn capture_loop(
         frame_size,
         &source,
         &telemetry,
+        &startup_sender,
     );
-    if result.is_err() {
+    if let Err(error) = result {
+        let _ = startup_sender.send(Err(error));
         publish_silence(&mut producer, frame_size, 0, &telemetry);
     }
 }
@@ -309,6 +334,7 @@ fn capture_loop_inner(
     frame_size: usize,
     source: &CaptureSource,
     telemetry: &CaptureTelemetry,
+    startup_sender: &mpsc::SyncSender<Result<(), String>>,
 ) -> Result<(), String> {
     initialize_mta()
         .ok()
@@ -369,6 +395,9 @@ fn capture_loop_inner(
             .map(|_| Vec::with_capacity(frame_size * 2))
             .collect::<Vec<_>>();
         let mut mono = Vec::with_capacity(frame_size);
+        startup_sender
+            .send(Ok(()))
+            .map_err(|_| "capture startup receiver disconnected".to_owned())?;
         while !stop_requested.load(Ordering::Acquire) {
             if event.wait_for_event(25).is_err() {
                 publish_silence(
@@ -446,7 +475,7 @@ fn enumerate_audio_devices_mta() -> Result<Vec<AudioDevice>, String> {
         append_devices(
             &enumerator,
             Direction::Render,
-            AudioDeviceKind::LoopbackRender,
+            AudioDeviceKind::RenderLoopback,
             default_render_id.as_deref(),
             "Salida (loopback)",
             &mut devices,
@@ -689,7 +718,7 @@ mod tests {
                 id: "render-id".to_owned(),
                 name: "Altavoces".to_owned(),
                 is_default: true,
-                kind: AudioDeviceKind::LoopbackRender,
+                kind: AudioDeviceKind::RenderLoopback,
             },
             AudioDevice {
                 id: "capture-id".to_owned(),

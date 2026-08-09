@@ -65,6 +65,18 @@ internal unsafe struct NativeAudioDeviceProperties
     public byte IsDefault;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct NativeAudioDevicePropertiesV2
+{
+    public uint StructSize;
+    public uint AbiVersion;
+    public sbyte* DeviceId;
+    public sbyte* Name;
+    public byte IsDefault;
+    public byte Kind;
+    public ushort Reserved;
+}
+
 /// Native ABI import. The UI does not call it until the Rust DLL is deployed;
 /// this keeps presentation work independently executable.
 internal static unsafe partial class EchoCoreNative
@@ -132,6 +144,17 @@ internal static unsafe partial class EchoCoreNative
     [LibraryImport(DllName, EntryPoint = "free_device_list")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void FreeDeviceList(NativeAudioDeviceProperties* devices, uint count);
+
+    [LibraryImport(DllName, EntryPoint = "get_audio_devices_v2")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial byte GetAudioDevicesV2(
+        IntPtr handle,
+        NativeAudioDevicePropertiesV2** outDevices,
+        uint* outCount);
+
+    [LibraryImport(DllName, EntryPoint = "free_device_list_v2")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial void FreeDeviceListV2(NativeAudioDevicePropertiesV2* devices, uint count);
 
     [LibraryImport(DllName, EntryPoint = "get_last_error")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

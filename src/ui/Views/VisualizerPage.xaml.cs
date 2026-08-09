@@ -24,6 +24,8 @@ namespace EchoVisualizer.Views
         private readonly AudioCoreService _audioCore = AppVisualizerState.AudioCoreService;
         private readonly DispatcherTimer _disclaimerTimer = new();
         private readonly DispatcherTimer _renderTimer = new();
+        private ThemeService? _themeService;
+        private bool _isThemeServiceSubscribed;
         private int _countdown = 5;
 
         public VisualizerPage()
@@ -38,6 +40,9 @@ namespace EchoVisualizer.Views
 
             _renderTimer.Interval = TimeSpan.FromMilliseconds(16);
             _renderTimer.Tick += RenderTimer_Tick;
+
+            Loaded += VisualizerPage_Loaded;
+            Unloaded += VisualizerPage_Unloaded;
 
             SyncViewModelToUiAndGpu();
 
@@ -56,10 +61,6 @@ namespace EchoVisualizer.Views
         {
             var primaryColor = Color.FromArgb(255, _viewModel.PrimaryR, _viewModel.PrimaryG, _viewModel.PrimaryB);
             var secondaryColor = Color.FromArgb(255, _viewModel.SecondaryR, _viewModel.SecondaryG, _viewModel.SecondaryB);
-
-            // Sync Canvas ClearColor according to theme
-            var isLight = ActualTheme == ElementTheme.Light;
-            Win2DCanvas.ClearColor = isLight ? Color.FromArgb(255, 243, 244, 248) : Color.FromArgb(255, 6, 8, 16);
 
             // Sync UI Controls
             BandCountSlider.Value = _viewModel.BandCount;
@@ -85,6 +86,11 @@ namespace EchoVisualizer.Views
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
+            if (e.Parameter is ThemeService themeService)
+            {
+                _themeService = themeService;
+            }
+
             SyncViewModelToUiAndGpu();
             if (_hasDisclaimerBeenShown)
             {
@@ -96,6 +102,34 @@ namespace EchoVisualizer.Views
         {
             base.OnNavigatedFrom(e);
             _renderTimer.Stop();
+        }
+
+        private void VisualizerPage_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (_isThemeServiceSubscribed || _themeService == null)
+            {
+                return;
+            }
+
+            _themeService.ResolvedThemeChanged += ThemeService_ResolvedThemeChanged;
+            _isThemeServiceSubscribed = true;
+            Win2DCanvas.ClearColor = _themeService.SurfaceBackgroundColor;
+        }
+
+        private void VisualizerPage_Unloaded(object sender, RoutedEventArgs e)
+        {
+            if (!_isThemeServiceSubscribed || _themeService == null)
+            {
+                return;
+            }
+
+            _themeService.ResolvedThemeChanged -= ThemeService_ResolvedThemeChanged;
+            _isThemeServiceSubscribed = false;
+        }
+
+        private void ThemeService_ResolvedThemeChanged(object? sender, ResolvedThemeChangedEventArgs e)
+        {
+            Win2DCanvas.ClearColor = e.SurfaceBackgroundColor;
         }
 
         private void InitializeDisclaimerTimer()

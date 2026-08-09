@@ -7,6 +7,12 @@
   instrumentación de presentación, monitor 4K o duración real permanecen
   pendientes.
 
+> Historical evidence note (2026-08-08): the original packaging command and
+> startup-permission assumptions have been superseded. Current work uses
+> `scripts/Build-Distributions.ps1`; permission and theme behavior is governed
+> by RF6.1.3--RF6.1.5, RF6.2.5, and RF6.6.3. Historical results below are not
+> evidence for the current runtime-parity increment.
+
 ## Fuente normativa
 
 | ID de requisito | Sección exacta | Fórmula, rango, unidad o regla transcrita | Criterio de aceptación |
@@ -26,7 +32,7 @@
 | V2 | `tests/EchoVisualizer.Tests/FfiStressTests.cs` | `OneMillion = 1_000_000`; límite de heap `1 MiB`; 100 consultas de lista. | La llamada ABI no reserva en el wrapper; la lista se materializa y libera en cada iteración. |
 | V2 | `scripts/Invoke-FfiStress.ps1` | configuración `Release`; resultado `.trx`. | Ejecuta sólo la batería V2 y conserva evidencia de la ejecución. |
 | V3–V6, VA1–VA5 | `docs/verification/real-time-validation.md` | umbrales en ms, Hz, horas y resoluciones normativas. | Define instrumentos, cálculo, evidencia y regla de aprobación sin sustituir una medición por estimación. |
-| MSIX | `src/ui/Package.appxmanifest`, `scripts/Build-MSIX.ps1` | x64; `AppxBundle=Always`; certificado PFX opcional. | Configura single-project MSIX y produce el paquete firmado cuando se suministra PFX cuyo Subject coincide con el Publisher. |
+| MSIX | `src/ui/Package.appxmanifest`, `scripts/Build-Distributions.ps1` | x64/ARM64; `AppxBundle=Always`; certificado del usuario actual opcional. | El punto de entrada común valida metadata, manifiesto, arquitectura, capacidades, payload y firma; una versión temporal se aplica mediante un manifiesto generado sin modificar fuentes. |
 
 ## Verificación
 
@@ -38,11 +44,11 @@
 | V5 | Procedimiento V5 de `real-time-validation.md`. | 24 h, loopback real, muestreo por minuto y cambio cada 5 min. | **Pendiente**: todavía no hay una sesión continua de 24 h ni su CSV de salud. |
 | V6 | 100 cambios UI entre barras, espejo, pulso y malla, con el paquete MSIX `1.0.0.21`. | Cambios 2D/3D y cambios en onset; máximo <= 16.6 ms. | **Smoke de estabilidad ejecutado el 2026-07-29**: 100 cambios en 39.61 s sin cierre del proceso ni evento `Application Error`. **No aprobado**: la duración incluye automatización de UI y no mide solicitud a primer frame presentado; falta instrumentación de presentación y casos `Onset == true`. |
 | VA1 | Procedimiento VA1 de `real-time-validation.md`. | EDM, clásica, rock/metal y podcast/voz. | **Pendiente**: requiere evaluación humana, las cuatro fuentes de audio y vídeo/anotaciones perceptuales. |
-| VA2 | Disclaimer y smoke de fullscreen/Escape del paquete MSIX `1.0.0.21`. | Tema Sistema/Claro/Noche; fullscreen, Escape, cursor y restauración. | **Parcial**: el disclaimer fue aceptado explícitamente y fullscreen se activó sin cerrar el proceso. La automatización no confirmó de forma fiable la restauración de shell con Escape, ni verificó los tres temas y el cursor; se requiere checklist/captura manual. |
+| VA2 | Smoke histórico de fullscreen/Escape del paquete MSIX `1.0.0.21`. | Tema Sistema/Claro/Noche; fullscreen, Escape, cursor y restauración. | **Obsoleto para aceptación actual**: la antigua aceptación explícita del disclaimer ya no es normativa. La sincronización dinámica de tema debe verificarse según RF6.6.3 y el informe de paridad del 2026-08-08. |
 | VA3 | Procedimiento VA3 de `real-time-validation.md`. | 20 transiciones; onset, frame inicial y fundido 0.5–2 s. | **Pendiente**: faltan reproducción real, traza de onset y las 20 mediciones de transición. |
 | VA4 | Procedimiento VA4 de `real-time-validation.md`. | Dos endpoints y refresco de selector cada 2 s. | **Pendiente**: se detectaron endpoints de audio del sistema, pero no se conectaron/desconectaron físicamente dos dispositivos durante reproducción. |
 | VA5 | Suite .NET y procedimiento VA5 de `real-time-validation.md`. | CRUD, reinicio y JSON corrupto con respaldo. | **Automatización aprobada el 2026-07-29**: la suite .NET completa (31/31) incluye comportamiento de presets y fallback de JSON. **Pendiente manual**: CRUD visible, reinicio y comprobación del respaldo desde la UI instalada. |
-| MSIX | `scripts/Build-MSIX.ps1 -Configuration Release -CertificatePath ...`. | Certificado cuyo Subject coincide con el Publisher. | **Generado, firmado e instalado el 2026-07-29**: MSIX x64 `1.0.0.21` ejecutado en smoke de selección; el incidente de acceso inválido de la ruta de malla D3D11 fue corregido mediante carga dinámica segura. |
+| MSIX | Evidencia histórica; el comando vigente es `scripts/Build-Distributions.ps1 -Profile Store`. | Certificado con clave privada cuyo Subject coincide con el Publisher del manifiesto. | **Histórico, 2026-07-29**: MSIX x64 `1.0.0.21` fue generado, firmado e instalado. No sustituye la validación estructural y de runtime del incremento actual. |
 
 ## Desviaciones o decisiones
 

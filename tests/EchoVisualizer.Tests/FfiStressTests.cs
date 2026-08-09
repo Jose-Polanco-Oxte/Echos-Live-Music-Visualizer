@@ -25,6 +25,16 @@ public sealed class FfiStressTests
     }
 
     [Fact]
+    public void AudioDeviceV2_LayoutMatchesRustReprCContract()
+    {
+        Assert.Equal(32, Marshal.SizeOf<NativeAudioDevicePropertiesV2>());
+        Assert.Equal((nuint)0, (nuint)Marshal.OffsetOf<NativeAudioDevicePropertiesV2>(nameof(NativeAudioDevicePropertiesV2.StructSize)));
+        Assert.Equal((nuint)8, (nuint)Marshal.OffsetOf<NativeAudioDevicePropertiesV2>(nameof(NativeAudioDevicePropertiesV2.DeviceId)));
+        Assert.Equal((nuint)24, (nuint)Marshal.OffsetOf<NativeAudioDevicePropertiesV2>(nameof(NativeAudioDevicePropertiesV2.IsDefault)));
+        Assert.Equal((nuint)25, (nuint)Marshal.OffsetOf<NativeAudioDevicePropertiesV2>(nameof(NativeAudioDevicePropertiesV2.Kind)));
+    }
+
+    [Fact]
     public void AudioFrameLease_DefaultHasNoBorrowedSpan()
     {
         var lease = default(AudioFrameLease);
@@ -158,6 +168,47 @@ public sealed class FfiStressTests
         Assert.True(
             workingSetAfter - workingSetBefore < 64L * 1024 * 1024,
             $"Device-list ABI queries increased private memory by {(workingSetAfter - workingSetBefore):N0} bytes.");
+    }
+
+    [Fact]
+    public void AudioCoreService_DeviceV2ExposesOnlyDefinedKinds()
+    {
+        using var service = new AudioCoreService();
+        Assert.True(service.IsAvailable);
+
+        var devices = service.GetAudioDevices();
+        Assert.NotEmpty(devices);
+        Assert.All(devices, device => Assert.True(
+            device.Kind is AudioDeviceKind.RenderLoopback or AudioDeviceKind.DirectCapture));
+    }
+
+    [Fact]
+    public void AudioCoreService_FailedSelectionReturnsNativeErrorAndKeepsDefaultSelectable()
+    {
+        using var service = new AudioCoreService();
+        Assert.True(service.IsAvailable);
+        Assert.True(service.SelectAudioDevice("default").Succeeded);
+
+        var failed = service.SelectAudioDevice("echo-device-that-does-not-exist");
+
+        Assert.False(failed.Succeeded);
+        Assert.Equal(AudioDeviceSelectionFailure.NativeFailure, failed.Failure);
+        Assert.False(string.IsNullOrWhiteSpace(failed.ErrorMessage));
+        Assert.True(service.SelectAudioDevice("default").Succeeded);
+    }
+
+    [Fact]
+    public async Task AudioCoreService_ActivityConfirmationIsBoundedToThreeSeconds()
+    {
+        using var service = new AudioCoreService();
+        Assert.True(service.IsAvailable);
+        var stopwatch = Stopwatch.StartNew();
+
+        var result = await service.ConfirmCaptureActivityAsync(TimeSpan.FromMilliseconds(150));
+
+        Assert.True(result is AudioCaptureActivityResult.Advancing
+            or AudioCaptureActivityResult.NoAdvancingFrames);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(3));
     }
 
     [Fact]

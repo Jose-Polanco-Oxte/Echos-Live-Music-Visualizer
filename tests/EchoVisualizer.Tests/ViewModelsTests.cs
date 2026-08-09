@@ -1,4 +1,5 @@
 using EchoVisualizer.ViewModels;
+using EchoVisualizer.Services;
 
 namespace EchoVisualizer.Tests;
 
@@ -30,7 +31,7 @@ public sealed class ViewModelsTests
     public void SettingsViewModel_DefaultThemeIsSystem()
     {
         var vm = new SettingsViewModel();
-        Assert.Equal(0, vm.ThemeIndex);
+        Assert.Equal(ThemePreference.System, vm.ThemePreference);
         Assert.NotEmpty(vm.AudioDevices);
     }
 }

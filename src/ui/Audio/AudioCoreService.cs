@@ -1,4 +1,5 @@
 using Microsoft.Win32.SafeHandles;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace EchoVisualizer.Audio;
@@ -178,6 +179,61 @@ public sealed unsafe class AudioCoreService : IAudioFrameSource, IDisposable
             return [];
         }
 
+        try
+        {
+            return GetAudioDevicesV2();
+        }
+        catch (EntryPointNotFoundException)
+        {
+            // A pre-device-v2 DLL remains usable through the original layout.
+            return GetAudioDevicesV1();
+        }
+    }
+
+    private IReadOnlyList<AudioDevice> GetAudioDevicesV2()
+    {
+        NativeAudioDevicePropertiesV2* nativeDevices = null;
+        uint count = 0;
+        if (EchoCoreNative.GetAudioDevicesV2(_handle!.DangerousGetHandle(), &nativeDevices, &count) == 0
+            || nativeDevices is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            var devices = new List<AudioDevice>(checked((int)count));
+            for (var index = 0; index < count; index++)
+            {
+                var device = nativeDevices[index];
+                if (device.DeviceId is null || device.Name is null)
+                {
+                    continue;
+                }
+
+                if (device.StructSize < (uint)sizeof(NativeAudioDevicePropertiesV2)
+                    || device.AbiVersion != 2
+                    || device.Kind is < 1 or > 2)
+                {
+                    continue;
+                }
+
+                devices.Add(new AudioDevice(
+                    Marshal.PtrToStringUTF8((IntPtr)device.DeviceId) ?? string.Empty,
+                    Marshal.PtrToStringUTF8((IntPtr)device.Name) ?? string.Empty,
+                    device.IsDefault != 0,
+                    (AudioDeviceKind)device.Kind));
+            }
+            return devices;
+        }
+        finally
+        {
+            EchoCoreNative.FreeDeviceListV2(nativeDevices, count);
+        }
+    }
+
+    private IReadOnlyList<AudioDevice> GetAudioDevicesV1()
+    {
         NativeAudioDeviceProperties* nativeDevices = null;
         uint count = 0;
         if (EchoCoreNative.GetAudioDevices(_handle!.DangerousGetHandle(), &nativeDevices, &count) == 0
@@ -200,7 +256,8 @@ public sealed unsafe class AudioCoreService : IAudioFrameSource, IDisposable
                 devices.Add(new AudioDevice(
                     Marshal.PtrToStringUTF8((IntPtr)device.DeviceId) ?? string.Empty,
                     Marshal.PtrToStringUTF8((IntPtr)device.Name) ?? string.Empty,
-                    device.IsDefault != 0));
+                    device.IsDefault != 0,
+                    AudioDeviceKind.RenderLoopback));
             }
             return devices;
         }
@@ -214,10 +271,113 @@ public sealed unsafe class AudioCoreService : IAudioFrameSource, IDisposable
     public IReadOnlyList<AudioDevice> GetLoopbackDevices() => GetAudioDevices();
 
     /// <summary>RF6.2.3: swaps only the native capture worker; UI polling continues.</summary>
-    public bool TrySelectLoopbackDevice(string deviceId) =>
-        IsAvailable
-        && !string.IsNullOrWhiteSpace(deviceId)
-        && EchoCoreNative.SetAudioDevice(_handle!.DangerousGetHandle(), deviceId) != 0;
+    public AudioDeviceSelectionResult SelectAudioDevice(string deviceId)
+    {
+        if (!IsAvailable)
+        {
+            return AudioDeviceSelectionResult.Failed(
+                AudioDeviceSelectionFailure.EngineUnavailable,
+                InitializationError ?? "El motor de audio no está disponible.");
+        }
+
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return AudioDeviceSelectionResult.Failed(
+                AudioDeviceSelectionFailure.InvalidSelection,
+                "El identificador del dispositivo de audio está vacío.");
+        }
+
+        try
+        {
+            if (EchoCoreNative.SetAudioDevice(_handle!.DangerousGetHandle(), deviceId) != 0)
+            {
+                return AudioDeviceSelectionResult.Success;
+            }
+
+            return AudioDeviceSelectionResult.Failed(
+                AudioDeviceSelectionFailure.NativeFailure,
+                ReadNativeLastError() ?? "EchoCore no pudo iniciar el dispositivo seleccionado.");
+        }
+        catch (Exception exception) when (exception is EntryPointNotFoundException
+            or DllNotFoundException
+            or BadImageFormatException)
+        {
+            return AudioDeviceSelectionResult.Failed(
+                AudioDeviceSelectionFailure.InteropFailure,
+                $"No se pudo comunicar con EchoCore: {exception.Message}");
+        }
+    }
+
+    public Task<AudioCaptureActivityResult> ConfirmCaptureActivityAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default) => Task.Run(
+            () => ConfirmCaptureActivity(timeout, cancellationToken),
+            cancellationToken);
+
+    private AudioCaptureActivityResult ConfirmCaptureActivity(
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        if (!IsAvailable)
+        {
+            return AudioCaptureActivityResult.EngineUnavailable;
+        }
+
+        var boundedTimeout = timeout <= TimeSpan.Zero
+            ? TimeSpan.Zero
+            : TimeSpan.FromMilliseconds(Math.Min(timeout.TotalMilliseconds, 3_000));
+        var stopwatch = Stopwatch.StartNew();
+        ulong? observedTimestamp = null;
+        while (stopwatch.Elapsed < boundedTimeout)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (TryAcquireFrame(out var lease))
+            {
+                using (lease)
+                {
+                    if (lease.CaptureTimestampUs > 0)
+                    {
+                        if (observedTimestamp.HasValue
+                            && observedTimestamp.Value != lease.CaptureTimestampUs)
+                        {
+                            return AudioCaptureActivityResult.Advancing;
+                        }
+                        observedTimestamp = lease.CaptureTimestampUs;
+                    }
+                }
+            }
+
+            var remaining = boundedTimeout - stopwatch.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                break;
+            }
+            if (cancellationToken.WaitHandle.WaitOne(
+                TimeSpan.FromMilliseconds(Math.Min(100, remaining.TotalMilliseconds))))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+        }
+
+        return AudioCaptureActivityResult.NoAdvancingFrames;
+    }
+
+    private string? ReadNativeLastError()
+    {
+        const int bufferLength = 1_024;
+        Span<sbyte> buffer = stackalloc sbyte[bufferLength];
+        fixed (sbyte* pointer = buffer)
+        {
+            return EchoCoreNative.GetLastError(
+                _handle!.DangerousGetHandle(),
+                pointer,
+                bufferLength) == 2
+                ? Marshal.PtrToStringUTF8((IntPtr)pointer)
+                : null;
+        }
+    }
+
+    public bool TrySelectLoopbackDevice(string deviceId) => SelectAudioDevice(deviceId).Succeeded;
 
     public bool TrySelectAudioDevice(string deviceId) => TrySelectLoopbackDevice(deviceId);
 
@@ -310,7 +470,41 @@ public sealed unsafe class AudioCoreService : IAudioFrameSource, IDisposable
     }
 }
 
-public sealed record AudioDevice(string Id, string Name, bool IsDefault);
+public sealed record AudioDevice(string Id, string Name, bool IsDefault, AudioDeviceKind Kind);
+
+public enum AudioDeviceKind : byte
+{
+    RenderLoopback = 1,
+    DirectCapture = 2,
+}
+
+public enum AudioDeviceSelectionFailure
+{
+    None,
+    EngineUnavailable,
+    InvalidSelection,
+    NativeFailure,
+    InteropFailure,
+}
+
+public readonly record struct AudioDeviceSelectionResult(
+    bool Succeeded,
+    AudioDeviceSelectionFailure Failure,
+    string? ErrorMessage)
+{
+    public static AudioDeviceSelectionResult Success => new(true, AudioDeviceSelectionFailure.None, null);
+
+    public static AudioDeviceSelectionResult Failed(
+        AudioDeviceSelectionFailure failure,
+        string message) => new(false, failure, message);
+}
+
+public enum AudioCaptureActivityResult
+{
+    Advancing,
+    NoAdvancingFrames,
+    EngineUnavailable,
+}
 
 public enum LufsMode
 {

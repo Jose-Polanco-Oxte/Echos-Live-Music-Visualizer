@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <EchoProductVersion>0.2.0.17</EchoProductVersion>
+    <EchoCoreVersion>0.2.0</EchoCoreVersion>
+    <EchoProductName>Echo Visualizer</EchoProductName>
+    <EchoPublisherDisplayName>Echo Visualizer</EchoPublisherDisplayName>
+    <EchoPackageIdentityName>EchoVisualizer</EchoPackageIdentityName>
+    <EchoPackagePublisher>CN=Echo Visualizer Development</EchoPackagePublisher>
+    <EchoApplicationId>App</EchoApplicationId>
+    <EchoApplicationIcon>Assets\AppIcon.ico</EchoApplicationIcon>
+    <EchoBrandBackgroundColor>#03060F</EchoBrandBackgroundColor>
+    <!-- Side-by-side manifest identity; this is not the product/package version. -->
+    <EchoWin32AssemblyIdentityName>EchoVisualizer.app</EchoWin32AssemblyIdentityName>
+    <EchoWin32AssemblyManifestVersion>1.0.0.0</EchoWin32AssemblyManifestVersion>
+  </PropertyGroup>
+</Project>

@@ -16,15 +16,7 @@ namespace EchoVisualizer.Services
             var data = UserSettingsService.Load();
 
             // Load Global Settings
-            SettingsViewModel.ThemeIndex = data.ThemeIndex;
-            if (!string.IsNullOrEmpty(data.SelectedAudioDeviceId))
-            {
-                SettingsViewModel.SelectedAudioDevice = new AudioDeviceItem { Id = data.SelectedAudioDeviceId, Name = data.SelectedAudioDeviceId };
-                if (data.SelectedAudioDeviceId != "default")
-                {
-                    AudioCoreService.TrySelectAudioDevice(data.SelectedAudioDeviceId);
-                }
-            }
+            SettingsViewModel.ThemePreference = data.ThemePreference;
 
             // Load Visualizer Customization Settings
             VisualizerViewModel.BandCount = data.BandCount;
@@ -56,6 +48,103 @@ namespace EchoVisualizer.Services
                     selected.IsSelected = true;
                 }
             }
+
+            if (RestoreAudioSelection(data.SelectedAudioDeviceId))
+            {
+                // RF6.2.3: stale or rejected endpoints are synchronized only
+                // after every other persisted field has been restored.
+                SaveSettings();
+            }
+        }
+
+        private static bool RestoreAudioSelection(string? persistedDeviceId)
+        {
+            var defaultItem = new AudioDeviceItem
+            {
+                Id = "default",
+                Name = "Salida predeterminada del sistema (loopback)",
+                Kind = AudioDeviceKind.RenderLoopback,
+            };
+            var requestedId = string.IsNullOrWhiteSpace(persistedDeviceId)
+                ? "default"
+                : persistedDeviceId;
+
+            if (requestedId == "default")
+            {
+                SettingsViewModel.SelectedAudioDevice = defaultItem;
+                var defaultResult = AudioCoreService.SelectAudioDevice("default");
+                if (!defaultResult.Succeeded)
+                {
+                    SettingsViewModel.AudioStatusMessage =
+                        $"No se pudo iniciar la salida predeterminada del sistema. {defaultResult.ErrorMessage}";
+                    SettingsViewModel.AudioStatusKind = AudioStatusKind.Error;
+                    SettingsViewModel.AudioRecoveryAction = AudioRecoveryAction.None;
+                }
+                return false;
+            }
+
+            var device = AudioCoreService.GetAudioDevices()
+                .FirstOrDefault(candidate => candidate.Id == requestedId);
+            if (device is null)
+            {
+                FallBackToDefault(
+                    defaultItem,
+                    "El dispositivo guardado ya no está disponible. Se restauró la salida predeterminada del sistema.",
+                    AudioStatusKind.Warning,
+                    AudioRecoveryAction.None);
+                return true;
+            }
+
+            if (device.Kind == AudioDeviceKind.DirectCapture
+                && MicrophonePrivacyService.CheckForStartup() is MicrophoneAccessState.Denied
+                    or MicrophoneAccessState.PromptRequired)
+            {
+                FallBackToDefault(
+                    defaultItem,
+                    "Windows todavía no permite usar el micrófono guardado. Se restauró el loopback predeterminado; vuelve a seleccionarlo para revisar el acceso.",
+                    AudioStatusKind.Warning,
+                    AudioRecoveryAction.OpenMicrophonePrivacy);
+                return true;
+            }
+
+            var result = AudioCoreService.SelectAudioDevice(device.Id);
+            if (!result.Succeeded)
+            {
+                FallBackToDefault(
+                    defaultItem,
+                    $"No se pudo restaurar {device.Name}. {result.ErrorMessage}",
+                    AudioStatusKind.Error,
+                    device.Kind == AudioDeviceKind.DirectCapture
+                        ? AudioRecoveryAction.OpenMicrophonePrivacy
+                        : AudioRecoveryAction.None);
+                return true;
+            }
+
+            SettingsViewModel.SelectedAudioDevice = new AudioDeviceItem
+            {
+                Id = device.Id,
+                Name = device.Name,
+                Kind = device.Kind,
+            };
+            return false;
+        }
+
+        private static void FallBackToDefault(
+            AudioDeviceItem defaultItem,
+            string message,
+            AudioStatusKind statusKind,
+            AudioRecoveryAction recoveryAction)
+        {
+            var fallback = AudioCoreService.SelectAudioDevice("default");
+            if (!fallback.Succeeded)
+            {
+                message = $"{message} Tampoco se pudo iniciar el loopback predeterminado: {fallback.ErrorMessage}";
+                statusKind = AudioStatusKind.Error;
+            }
+            SettingsViewModel.SelectedAudioDevice = defaultItem;
+            SettingsViewModel.AudioStatusMessage = message;
+            SettingsViewModel.AudioStatusKind = statusKind;
+            SettingsViewModel.AudioRecoveryAction = recoveryAction;
         }
 
         public static void SaveSettings()
@@ -63,7 +152,7 @@ namespace EchoVisualizer.Services
             var data = new UserSettingsData
             {
                 SelectedAudioDeviceId = SettingsViewModel.SelectedAudioDevice?.Id ?? "default",
-                ThemeIndex = SettingsViewModel.ThemeIndex,
+                ThemePreference = SettingsViewModel.ThemePreference,
                 BandCount = VisualizerViewModel.BandCount,
                 ScalingModeIndex = VisualizerViewModel.ScalingModeIndex,
                 LayoutIndex = VisualizerViewModel.LayoutIndex,

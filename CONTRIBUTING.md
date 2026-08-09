@@ -35,19 +35,29 @@ Thank you for your interest in contributing to Echo Visualizer! This repository 
 
 ## 🧹 Repository Hygiene
 
-- **Generated Artifacts**: Do not commit compiled binaries (`.dll`, `.exe`, `.msix`), output folders (`bin/`, `obj/`, `artifacts/`, `target/`), or IDE state files (`.vs/`).
-- **Secrets & Certificates**: Never commit private keys (`.pfx`), local developer certificates (`.cer`), or secret tokens to Git. CI/CD pipelines use GitHub Actions Secrets securely.
+- **Generated Artifacts**: Do not commit compiled binaries (`.dll`, `.exe`, `.msix`), output folders (`bin/`, `obj/`, `artifacts/`, `target/`), or IDE state files (`.vs/`). Versioned files under `src/ui/Assets/` are an intentional exception: they are deterministic branding projections and must match the checked-in recipe.
+- **Secrets & Certificates**: Never commit private keys (`.pfx`, `.p12`), certificate passwords, or secret tokens. A public `.cer` may be versioned only when it is an intentional, reviewed development trust anchor and contains no private key. CI/CD pipelines use GitHub Actions Secrets securely.
 - **Traceability**: When modifying DSP algorithms, band scaling formulas, or audio conditioning modes, update the specification documents under `docs/public/spec/` and append traceability records in `docs/public/traceability/`.
+- **Product metadata**: Change official version and product identity through `build/Product.props`, then synchronize its validated projections. Do not bypass `scripts/Test-ProductConfiguration.ps1`.
+- **Branding**: Change `docs/public/Echo-Logo-Large.png` or `build/branding.json`, run `scripts/Generate-BrandAssets.ps1`, and verify with `-Check`. Do not hand-edit individual scale/target-size outputs.
 
 ---
 
 ## 🏗️ Local Build Profiles
 
-- **Standalone Unpackaged Build (GitHub Releases)**:
+- **Validate both profiles and run all quality gates**:
   ```powershell
-  dotnet publish src/ui/EchoVisualizer.csproj -c Release -r win-x64 -p:BuildingForGitHub=true
+  .\scripts\Build-Distributions.ps1 -Profile Both
   ```
-- **Packaged MSIX Build (Microsoft Store)**:
+- **Standalone unpackaged build**:
   ```powershell
-  dotnet publish src/ui/EchoVisualizer.csproj -c Release -r win-x64 -p:BuildingForStore=true -p:Platform=x64
+  .\scripts\Build-Distributions.ps1 -Profile GitHub -RuntimeIdentifiers win-x64 -SkipTests
   ```
+- **Packaged MSIX build**:
+  ```powershell
+  .\scripts\Build-Distributions.ps1 -Profile Store -RuntimeIdentifiers win-x64 -SkipTests
+  ```
+
+Use the shared script instead of direct `dotnet publish` commands. It validates
+effective MSBuild properties, PE architecture, WinUI PRI resources, canonical
+metadata, branding assets, package capabilities, and distribution payloads.

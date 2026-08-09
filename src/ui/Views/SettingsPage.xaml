@@ -32,6 +32,17 @@
                     <TextBlock Text="Dispositivo de Audio" FontSize="16" FontWeight="SemiBold" Foreground="{ThemeResource BrushTextPrimary}" />
                     <TextBlock Text="Selecciona la fuente de captura de audio activa del sistema." FontSize="12" Foreground="{ThemeResource BrushTextSecondary}" />
                     <ComboBox x:Name="AudioDeviceSelector" DisplayMemberPath="Name" SelectionChanged="AudioDeviceSelector_SelectionChanged" HorizontalAlignment="Stretch" />
+                    <InfoBar x:Name="AudioStatusBar"
+                             IsOpen="False"
+                             IsClosable="True"
+                             AutomationProperties.Name="Estado de captura de audio">
+                        <InfoBar.ActionButton>
+                            <Button x:Name="AudioRecoveryButton"
+                                    Content="Abrir privacidad del micrófono"
+                                    Click="AudioRecoveryButton_Click"
+                                    Visibility="Collapsed" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
                 </StackPanel>
 
                 <!-- Interface Theme Section -->

@@ -5,6 +5,37 @@ All notable changes to **Echo Live Music Visualizer** will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0.17] - 2026-08-08
+
+### Added
+- Added deterministic, multi-resolution branding assets and embedded icons for
+  packaged and unpackaged x64/ARM64 distributions.
+- Added direct microphone and line-input selection through a versioned audio
+  device ABI while preserving the existing loopback interface.
+- Added capture-activity diagnostics, transactional device replacement, and
+  identity-appropriate microphone privacy recovery.
+- Added live Windows system-theme synchronization across XAML, the title bar,
+  Win2D surfaces, and high-contrast resources.
+- Added canonical product metadata and one validated build entry point shared
+  by local development and GitHub Actions.
+
+### Fixed
+- Fixed the unpackaged WinUI startup crash caused by an incomplete PRI resource
+  graph.
+- Fixed generic or missing shell/window icons in standalone distributions.
+- Fixed silent microphone-selection failures and stale-device persistence.
+- Fixed test isolation so the .NET suite cannot overwrite real user theme and
+  audio preferences.
+- Fixed release workflow version derivation, tag validation, and MSIX identity
+  version propagation.
+
+### Release metrics
+- Feature increments: 1 (`distribution runtime parity and configuration hardening`).
+- Verified defects resolved: 5.
+- Unique release files affected: 110.
+- Build increment: `max(1, floor(110 / 10)) = 11`.
+- Calculated version: `0.1.0.6 -> 0.2.0.17`.
+
 ## [0.1.0.6] - 2026-08-08
 
 ### Added

@@ -3,25 +3,74 @@ name: Official Release (GitHub Releases)
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*.*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Four-part release version (A.B.C.D)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  metadata:
+    name: Validate Release Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Resolve and Validate Version
+        id: release
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $version = $env:INPUT_VERSION.Trim()
+            $tagName = "v$version"
+          }
+          else {
+            $tagName = $env:REF_NAME
+            if ($tagName -notmatch '^v(?<version>\d+\.\d+\.\d+\.\d+)$') {
+              throw "Release tag must use vA.B.C.D: $tagName"
+            }
+            $version = $Matches.version
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+            throw "Release version must use A.B.C.D: $version"
+          }
+          foreach ($component in $version.Split('.')) {
+            if ([int]$component -gt 65535) {
+              throw "Release version components must be between 0 and 65535: $version"
+            }
+          }
+
+          ./scripts/Test-ProductConfiguration.ps1 -ExpectedVersion $version | Out-Null
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
+
   build-release:
-    name: Build & Package GitHub Release (${{ matrix.target_arch }})
+    name: Build and Package GitHub Release (${{ matrix.target_arch }})
+    needs: metadata
     runs-on: windows-latest
     strategy:
       fail-fast: true
       matrix:
         include:
           - target_arch: win-x64
-            dotnet_platform: x64
             rust_target: x86_64-pc-windows-msvc
           - target_arch: win-arm64
-            dotnet_platform: arm64
             rust_target: aarch64-pc-windows-msvc
 
     steps:
@@ -37,74 +86,54 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
-          components: rustfmt, clippy
 
-      - name: Ensure Target Available (${{ matrix.rust_target }})
-        run: rustup target add ${{ matrix.rust_target }}
-
-      - name: Pre-build Rust Core Engine (${{ matrix.target_arch }})
-        run: cargo build --manifest-path src/core/Cargo.toml --release --target ${{ matrix.rust_target }}
-
-      - name: Extract Tag Version
-        id: get_version
+      - name: Publish and Validate Unpackaged Self-Contained Distribution
         shell: pwsh
-        run: |
-          $rawTag = "${{ github.ref_name }}"
-          if ($rawTag -like "v*") {
-            $version = $rawTag.Substring(1)
-          } else {
-            $version = "0.1.0.4"
-          }
-          Write-Host "Releasing version: $version"
-          echo "VERSION=$version" >> $env:GITHUB_ENV
-          echo "TAG_NAME=$rawTag" >> $env:GITHUB_ENV
+        run: >-
+          ./scripts/Build-Distributions.ps1
+          -Profile GitHub
+          -RuntimeIdentifiers ${{ matrix.target_arch }}
+          -BuildVersion ${{ needs.metadata.outputs.version }}
+          -SkipTests
 
-      - name: Publish WinUI 3 Unpackaged Self-Contained (${{ matrix.target_arch }})
+      - name: Optional Code Signing with SignTool and PFX
         shell: pwsh
+        env:
+          SIGNING_CERTIFICATE_BASE64: ${{ secrets.SIGNING_CERTIFICATE_BASE64 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
         run: |
-          dotnet publish src/ui/EchoVisualizer.csproj `
-            -c Release `
-            -r ${{ matrix.target_arch }} `
-            -p:Platform=${{ matrix.dotnet_platform }} `
-            -p:BuildingForGitHub=true `
-            -p:Version="${{ env.VERSION }}" `
-            -p:AssemblyVersion="${{ env.VERSION }}" `
-            -p:FileVersion="${{ env.VERSION }}" `
-            -p:InformationalVersion="${{ env.VERSION }}"
-
-      - name: (Optional) Code Signing with SignTool / PFX
-        id: code_sign
-        shell: pwsh
-        run: |
-          if ("${{ secrets.SIGNING_CERTIFICATE_BASE64 }}" -ne "") {
-            Write-Host "Decoding signing certificate..."
-            $certBytes = [System.Convert]::FromBase64String("${{ secrets.SIGNING_CERTIFICATE_BASE64 }}")
-            $certPath = "$env:TEMP\signing_cert.pfx"
+          if ($env:SIGNING_CERTIFICATE_BASE64) {
+            $certBytes = [System.Convert]::FromBase64String($env:SIGNING_CERTIFICATE_BASE64)
+            $certPath = Join-Path $env:RUNNER_TEMP 'signing-cert.pfx'
             [System.IO.File]::WriteAllBytes($certPath, $certBytes)
-            $certPassword = "${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}"
-            $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe"
-            $targetDir = "artifacts\github\${{ matrix.target_arch }}"
-            
-            Get-ChildItem -Path $targetDir -Recurse -Include "*.exe", "*.dll" | ForEach-Object {
-              & $signtool sign /fd SHA256 /f $certPath /p $certPassword $_.FullName
+            try {
+              $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1
+              if (-not $signTool) { throw 'signtool.exe was not found.' }
+
+              Get-ChildItem 'artifacts/github/${{ matrix.target_arch }}' -Recurse -Include '*.exe','*.dll' |
+                ForEach-Object {
+                  & $signTool.FullName sign /fd SHA256 /f $certPath /p $env:SIGNING_CERTIFICATE_PASSWORD $_.FullName
+                  if ($LASTEXITCODE -ne 0) { throw "Signing failed: $($_.FullName)" }
+                }
             }
-            Remove-Item $certPath -Force -ErrorAction SilentlyContinue
-          } else {
-            Write-Host "SIGNING_CERTIFICATE_BASE64 not configured. Skipping digital signing."
+            finally {
+              Remove-Item $certPath -Force -ErrorAction SilentlyContinue
+            }
+          }
+          else {
+            Write-Host 'Signing certificate is not configured; skipping Authenticode signing.'
           }
 
-      - name: Compress Unpackaged Distribution to ZIP Archive
+      - name: Compress Unpackaged Distribution
         shell: pwsh
         run: |
-          $zipName = "EchoVisualizer-${{ env.VERSION }}-${{ matrix.target_arch }}.zip"
-          $sourceDir = "artifacts\github\${{ matrix.target_arch }}"
-          $zipPath = "artifacts\$zipName"
-          
-          if (-not (Test-Path "artifacts")) { New-Item -ItemType Directory -Path "artifacts" }
-          Compress-Archive -Path "$sourceDir\*" -DestinationPath $zipPath -Force
-          Write-Host "Created release archive: $zipPath"
+          $version = '${{ needs.metadata.outputs.version }}'
+          $zipPath = "artifacts/EchoVisualizer-$version-${{ matrix.target_arch }}.zip"
+          Compress-Archive -Path 'artifacts/github/${{ matrix.target_arch }}/*' -DestinationPath $zipPath -Force
 
-      - name: Upload Build Artifact for Packaging Job
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-zip-${{ matrix.target_arch }}
@@ -112,7 +141,7 @@ jobs:
 
   publish-release:
     name: Create Official GitHub Release
-    needs: build-release
+    needs: [metadata, build-release]
     runs-on: ubuntu-latest
     steps:
       - name: Download Build Artifacts
@@ -127,43 +156,23 @@ jobs:
           sha256sum EchoVisualizer-*.zip > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Extract Release Version
-        id: get_tag
-        run: |
-          TAG_NAME="${GITHUB_REF_NAME}"
-          VERSION="${TAG_NAME#v}"
-          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          name: "Echo Visualizer v${{ env.VERSION }}"
-          tag_name: ${{ env.TAG_NAME }}
+          name: "Echo Visualizer v${{ needs.metadata.outputs.version }}"
+          tag_name: ${{ needs.metadata.outputs.tag_name }}
           draft: false
           prerelease: false
           body: |
-            ## 🎵 Echo Live Music Visualizer Release v${{ env.VERSION }}
+            ## Echo Live Music Visualizer v${{ needs.metadata.outputs.version }}
 
-            High-performance Windows real-time audio visualizer powered by Rust WASAPI DSP and WinUI 3 + Win2D rendering.
+            High-performance Windows real-time audio visualizer powered by Rust WASAPI DSP and WinUI 3 with Win2D rendering.
 
-            ### 📦 Download Options
-            - **`EchoVisualizer-${{ env.VERSION }}-win-x64.zip`**: Unpackaged, self-contained standalone build for 64-bit Windows.
-            - **`EchoVisualizer-${{ env.VERSION }}-win-arm64.zip`**: Unpackaged, self-contained standalone build for ARM64 Windows (Surface Pro X / Copilot+ PCs).
+            ### Download Options
+            - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-x64.zip`: standalone x64 build.
+            - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-arm64.zip`: standalone ARM64 build.
 
-            ### 🚀 Quick Start
-            1. Download the appropriate `.zip` package for your processor architecture (x64 or ARM64).
-            2. Extract the archive into any local folder.
-            3. Launch `EchoVisualizer.exe`. No Windows App SDK installation or admin privileges required!
-
-            ### 🔒 Integrity Checksum
-            Verify package authenticity using `SHA256SUMS.txt`:
-            ```bash
-            sha256sum -c SHA256SUMS.txt
-            ```
-
-            ---
-            *Built and published reproducibly via GitHub Actions CI/CD.*
+            Extract the appropriate archive and launch `EchoVisualizer.exe`. The distribution is self-contained and does not require a separate Windows App Runtime installation.
           files: |
             artifacts/EchoVisualizer-*.zip
             artifacts/SHA256SUMS.txt

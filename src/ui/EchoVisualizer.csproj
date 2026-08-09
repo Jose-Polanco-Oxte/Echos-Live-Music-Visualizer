@@ -1,14 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\build\Product.props" />
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <Version>0.1.0.6</Version>
-    <AssemblyVersion>0.1.0.6</AssemblyVersion>
-    <FileVersion>0.1.0.6</FileVersion>
-    <InformationalVersion>0.1.0.6</InformationalVersion>
+    <Version Condition="'$(Version)' == ''">$(EchoProductVersion)</Version>
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">$(EchoProductVersion)</AssemblyVersion>
+    <FileVersion Condition="'$(FileVersion)' == ''">$(EchoProductVersion)</FileVersion>
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(EchoProductVersion)</InformationalVersion>
     <RootNamespace>EchoVisualizer</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- RF6.1.6: embed the canonical multi-resolution Win32 icon. -->
+    <ApplicationIcon>$(EchoApplicationIcon)</ApplicationIcon>
     <Platforms>x64;arm64</Platforms>
     <PlatformTarget Condition="'$(RuntimeIdentifier)' == 'win-arm64' Or '$(Platform)' == 'arm64' Or '$(Platform)' == 'ARM64'">arm64</PlatformTarget>
     <PlatformTarget Condition="'$(PlatformTarget)' == ''">x64</PlatformTarget>
@@ -22,7 +25,9 @@
   <!-- GitHub Unpackaged Self-Contained Profile -->
   <PropertyGroup Condition="'$(BuildingForGitHub)' == 'true' Or '$(WindowsPackageType)' == 'None'">
     <WindowsPackageType>None</WindowsPackageType>
-    <EnableMsixTooling>false</EnableMsixTooling>
+    <!-- Required by Windows App SDK to merge WinUI framework resources into the
+         unpackaged PRI graph. This does not create an MSIX package. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
     <AppxPackage>false</AppxPackage>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
@@ -35,19 +40,22 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <MicrosoftWindowsSDKBuildToolsMSIXPackageVersion>1.7.20250829.1</MicrosoftWindowsSDKBuildToolsMSIXPackageVersion>
     <AppxPackage>true</AppxPackage>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
     <AppxBundle>Always</AppxBundle>
     <AppxBundlePlatforms Condition="'$(RuntimeIdentifier)' == 'win-arm64' Or '$(Platform)' == 'arm64'">arm64</AppxBundlePlatforms>
     <AppxBundlePlatforms Condition="'$(AppxBundlePlatforms)' == ''">x64</AppxBundlePlatforms>
     <AppxPackageDir>$(MSBuildThisFileDirectory)..\..\artifacts\store\</AppxPackageDir>
     <AppxPackageSigningEnabled Condition="'$(SignMsix)' == 'true'">true</AppxPackageSigningEnabled>
     <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+    <!-- Echo does not use Windows App SDK Main/Singleton deployment APIs. -->
+    <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
   </PropertyGroup>
 
   <!-- Rust Core (EchoCore) Build Configuration -->
   <PropertyGroup>
     <EchoCoreDirectory>$(MSBuildThisFileDirectory)..\core\</EchoCoreDirectory>
-    <!-- Default Cargo Resolution: Checks default rustup path, falls back to PATH 'cargo' -->
-    <EchoCoreCargo Condition="Exists('$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe')">$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe</EchoCoreCargo>
+    <!-- Resolve Cargo through rustup/PATH so rust-toolchain.toml controls the
+         exact toolchain and installed cross-compilation targets. -->
     <EchoCoreCargo Condition="'$(EchoCoreCargo)' == ''">cargo</EchoCoreCargo>
     
     <EchoCoreProfile Condition="'$(Configuration)' == 'Release'">release</EchoCoreProfile>
@@ -71,8 +79,20 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\**\*.*" />
+    <!-- RF6.1.6: packaged and unpackaged profiles publish the same generated assets. -->
+    <Content Include="Assets\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
     <Content Include="Resources\**\*.*" />
+  </ItemGroup>
+
+  <!-- Allows local/CI builds to use a generated manifest without modifying the
+       repository's normative Package.appxmanifest version. -->
+  <ItemGroup Condition="'$(PackageManifestOverride)' != ''">
+    <AppxManifest Include="$(PackageManifestOverride)">
+      <SubType>Designer</SubType>
+    </AppxManifest>
   </ItemGroup>
 
   <Target Name="BuildEchoCore" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">

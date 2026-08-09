@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -12,6 +13,8 @@ namespace EchoVisualizer
     public sealed partial class MainWindow : Window
     {
         public static MainWindow? Instance { get; private set; }
+
+        public ThemeService ThemeService { get; }
 
         public bool IsCursorHidden { get; private set; }
 
@@ -45,24 +48,15 @@ namespace EchoVisualizer
             AppVisualizerState.InitializeAndLoadSettings();
 
             InitializeComponent();
-
-            var themeIndex = AppVisualizerState.SettingsViewModel.ThemeIndex;
-            var targetTheme = themeIndex switch
-            {
-                1 => ElementTheme.Light,
-                2 => ElementTheme.Dark,
-                _ => ElementTheme.Default
-            };
-
-            SetTheme(targetTheme);
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(AppTitleBar);
 
-            var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
-            if (System.IO.File.Exists(iconPath))
-            {
-                AppWindow.SetIcon(iconPath);
-            }
+            ThemeService = new ThemeService(RootLayout, AppWindow);
+            AppVisualizerState.SettingsViewModel.PropertyChanged += SettingsViewModel_PropertyChanged;
+            ThemeService.ApplyPreference(AppVisualizerState.SettingsViewModel.ThemePreference);
+            Closed += MainWindow_Closed;
+
+            BrandingService.ApplyWindowIcon(AppWindow);
 
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             _subclassProc = new SUBCLASSPROC(WindowSubclassProc);
@@ -70,7 +64,7 @@ namespace EchoVisualizer
 
             AppWindow.Changed += AppWindow_Changed;
 
-            RootFrame.Navigate(typeof(VisualizerPage));
+            RootFrame.Navigate(typeof(VisualizerPage), ThemeService);
         }
 
         private static IntPtr GetBlankCursor()
@@ -165,39 +159,23 @@ namespace EchoVisualizer
             throw new Exception("Failed to load Page " + e.SourcePageType.FullName);
         }
 
-        public void SetTheme(ElementTheme theme)
+        private void SettingsViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (Content is FrameworkElement rootContent)
+            if (e.PropertyName == nameof(AppVisualizerState.SettingsViewModel.ThemePreference))
             {
-                rootContent.RequestedTheme = theme;
+                ThemeService.ApplyPreference(AppVisualizerState.SettingsViewModel.ThemePreference);
             }
-            UpdateTitleBarTheme(theme);
         }
 
-        public void UpdateTitleBarTheme(ElementTheme theme)
+        private void MainWindow_Closed(object sender, WindowEventArgs args)
         {
-            if (!AppWindowTitleBar.IsCustomizationSupported()) return;
-
-            var titleBar = AppWindow.TitleBar;
-            titleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-            titleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-
-            bool isDark = theme == ElementTheme.Dark ||
-                         (theme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark);
-
-            if (isDark)
+            Closed -= MainWindow_Closed;
+            AppWindow.Changed -= AppWindow_Changed;
+            AppVisualizerState.SettingsViewModel.PropertyChanged -= SettingsViewModel_PropertyChanged;
+            ThemeService.Dispose();
+            if (ReferenceEquals(Instance, this))
             {
-                titleBar.ButtonForegroundColor = Windows.UI.Color.FromArgb(255, 242, 244, 248);
-                titleBar.ButtonHoverForegroundColor = Windows.UI.Color.FromArgb(255, 255, 255, 255);
-                titleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(32, 255, 255, 255);
-                titleBar.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(255, 154, 163, 181);
-            }
-            else
-            {
-                titleBar.ButtonForegroundColor = Windows.UI.Color.FromArgb(255, 17, 24, 39);
-                titleBar.ButtonHoverForegroundColor = Windows.UI.Color.FromArgb(255, 0, 0, 0);
-                titleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(32, 0, 0, 0);
-                titleBar.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(255, 107, 114, 128);
+                Instance = null;
             }
         }
     }

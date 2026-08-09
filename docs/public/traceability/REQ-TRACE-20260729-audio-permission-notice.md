@@ -1,33 +1,43 @@
-# Trazabilidad de requisitos y fórmulas
+# Audio Permission Notice Traceability Correction
 
-- **Feature / incremento:** Declaración y aviso de permisos de audio del paquete MSIX
-- **Fecha:** 2026-07-29
-- **Responsable:** Codex
-- **Estado:** implementada; validación visual VA2 pendiente de aceptación manual
+- **Feature / Increment:** Audio permission disclosure and recovery guidance
+- **Date:** 2026-08-08
+- **Responsible:** Codex
+- **Status:** SUPERSEDED; replacement implementation completed, runtime validation pending
 
-## Fuente normativa
+## Normative Source
 
-| ID de requisito | Sección exacta | Fórmula, rango, unidad o regla transcrita | Criterio de aceptación |
+| Requirement ID | Exact Section | Transcribed Rule | Acceptance Criteria |
 |---|---|---|---|
-| RF6.2.2 | `Especificacion-de-requerimientos.md` §RF6.2 | El selector detecta entradas, micrófonos, líneas y bucles virtuales. | El manifiesto declara acceso de micrófono y el usuario recibe un aviso antes de iniciar la captura. |
-| RF6.1.3 | `Especificacion-de-requerimientos.md` §RF6.1 | El disclaimer debe ser legible y requerir espera/aceptación. | El aviso de permisos forma parte del disclaimer y no inicia render/captura hasta aceptarse. |
+| RF6.1.3 | `docs/public/spec/requirements-spec.md` §RF6.1 | The startup notice covers photosensitive content only and is not a system-permission request. | Startup contains no custom acceptance gate for microphone capability. |
+| RF6.1.4 | `docs/public/spec/requirements-spec.md` §RF6.1 | MSIX capabilities are declared by the package and disclosed through Windows installation mechanisms. | The package manifest declares `microphone`; the application does not duplicate the installer capability list. |
+| RF6.2.5 | `docs/public/spec/requirements-spec.md` §RF6.2 | Access failures receive identity-appropriate, non-blocking recovery guidance. | MSIX uses supported access status; unpackaged desktop guidance opens the global Windows microphone setting and does not promise a per-app prompt. |
 
-## Mapeo de implementación
+## Correction to the 2026-07-29 Record
 
-| Requisito | Archivo y símbolo | Variables/parámetros y unidades | Relación exacta con la fórmula |
-|---|---|---|---|
-| RF6.2.2 | `src/ui/Package.appxmanifest` :: `DeviceCapability` | `microphone` y `runFullTrust`. | Windows conoce el permiso usado por captura directa; no se declara red, cámara ni ubicación. |
-| RF6.1.3 | `src/ui/MainWindow.xaml` :: `DisclaimerPanel` | Texto visible y botón bloqueado 3 s. | Explica captura local y solicita aceptación previa. |
+The original record referenced a nonexistent `DisclaimerPanel`, a three-second
+button gate, and a custom permission notice. Those statements do not describe
+the current normative specification or application. They must not be used as
+implementation evidence.
 
-## Verificación
+## Implementation Mapping
 
-| Requisito | Prueba automatizada / procedimiento manual | Casos límite y tolerancia | Resultado |
-|---|---|---|---|
-| RF6.2.2 | Inspeccionar manifiesto dentro del MSIX e instalar paquete firmado de desarrollo. | La aplicación sólo solicita acceso al seleccionar una entrada directa. | Paquete firmado, verificado e instalado como `EchoVisualizer_1.0.0.0_x64__htdmg3bkztkej`. |
-| RF6.1.3 | VA2: abrir paquete recién instalado y comprobar aviso antes de aceptar. | El botón permanece deshabilitado durante la cuenta regresiva. | Aplicación instalada y lanzada; pendiente de confirmación visual manual del aviso y cuenta regresiva. |
+| Requirement | File and Symbol | Relationship |
+|---|---|---|
+| RF6.1.4 | `src/ui/Package.appxmanifest` :: `DeviceCapability Name="microphone"` | Declares packaged microphone capability. |
+| RF6.2.5 | `MicrophonePrivacyService`, `SettingsPage.ShowAudioStatus`, `AudioCoreService.ConfirmCaptureActivityAsync` | Identity-aware privacy recovery and bounded activity confirmation are mapped in the 2026-08-08 distribution runtime parity report. |
 
-## Desviaciones o decisiones
+## Verification
 
-El instalador Windows decide la presentación exacta de permisos. Echo declara el
-permiso de micrófono en el manifiesto y además ofrece aviso propio claro; no
-puede forzar el texto ni la pantalla del instalador del sistema operativo.
+| Requirement | Procedure | Result |
+|---|---|---|
+| RF6.1.3 | Inspect startup XAML and run both x64 identities. | PENDING FINAL VALIDATION |
+| RF6.1.4 | Inspect the built MSIX manifest and installation capability declaration. | PENDING FINAL VALIDATION |
+| RF6.2.5 | Deny/unavailable/no-data scenarios for packaged and unpackaged selection. | IMPLEMENTED; MANUAL RUNTIME VALIDATION PENDING |
+
+## Deviations or Decisions
+
+Windows does not provide the same per-application consent prompt to an
+unpackaged desktop process that it can expose for packaged identities. The
+application therefore reports the actual failure and links to the applicable
+desktop-app privacy control instead of emulating a consent prompt.

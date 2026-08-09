@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace EchoVisualizer.Services
 {
@@ -9,7 +10,16 @@ namespace EchoVisualizer.Services
     {
         // Global Settings
         public string SelectedAudioDeviceId { get; set; } = "default";
-        public int ThemeIndex { get; set; } = 0; // 0: System, 1: Light, 2: Dark/Night
+        private ThemePreference _themePreference = ThemePreference.System;
+
+        // Keep the persisted ThemeIndex key so existing settings migrate without
+        // a second settings store or a one-time file rewrite.
+        [JsonPropertyName("ThemeIndex")]
+        public ThemePreference ThemePreference
+        {
+            get => _themePreference;
+            set => _themePreference = ThemePreferenceMapper.Normalize(value);
+        }
 
         // Visualizer Customization Settings
         public int BandCount { get; set; } = 48;
@@ -41,9 +51,13 @@ namespace EchoVisualizer.Services
 
         public static UserSettingsData Load()
         {
+            return LoadFromPath(GetSettingsFilePath());
+        }
+
+        internal static UserSettingsData LoadFromPath(string filePath)
+        {
             try
             {
-                var filePath = GetSettingsFilePath();
                 if (File.Exists(filePath))
                 {
                     var json = File.ReadAllText(filePath);
@@ -64,9 +78,18 @@ namespace EchoVisualizer.Services
 
         public static bool Save(UserSettingsData data)
         {
+            return SaveToPath(data, GetSettingsFilePath());
+        }
+
+        internal static bool SaveToPath(UserSettingsData data, string filePath)
+        {
             try
             {
-                var filePath = GetSettingsFilePath();
+                var directory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
                 var json = JsonSerializer.Serialize(data, _jsonOptions);
                 File.WriteAllText(filePath, json);
                 return true;

@@ -44,6 +44,7 @@
     <Compile Include="..\..\src\ui\ViewModels\CatalogViewModel.cs" Link="ViewModels\CatalogViewModel.cs" />
     <Compile Include="..\..\src\ui\ViewModels\SettingsViewModel.cs" Link="ViewModels\SettingsViewModel.cs" />
     <Compile Include="..\..\src\ui\Services\UserSettingsService.cs" Link="Services\UserSettingsService.cs" />
+    <Compile Include="..\..\src\ui\Services\ThemePreference.cs" Link="Services\ThemePreference.cs" />
   </ItemGroup>
 
   <Target Name="BuildEchoCoreForFfiTests" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">

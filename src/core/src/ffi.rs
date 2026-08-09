@@ -12,7 +12,7 @@ use std::{
 };
 
 use crate::{
-    capture::{enumerate_audio_devices, LoopbackCapture, MAX_CAPTURE_CHANNELS},
+    capture::{enumerate_audio_devices, AudioDeviceKind, LoopbackCapture, MAX_CAPTURE_CHANNELS},
     BandProfile, BandScale, DspProcessor, DspScheduler, DspSettings, FrameMetadata, FrameStore,
     LoudnessProcessor, LufsMode, MasterPeakScaler, ProcessedFrame, SpectralScalingMode,
     SAMPLE_RATE_HZ,
@@ -314,6 +314,22 @@ pub struct AudioDeviceProperties {
     pub is_default: u8,
 }
 
+const AUDIO_DEVICE_ABI_VERSION: u32 = 2;
+
+/// RF6.2.2 versioned device descriptor. The v1 layout and exports remain
+/// unchanged; new clients use `struct_size` and `abi_version` before reading
+/// the explicit render-loopback/direct-capture kind.
+#[repr(C)]
+pub struct AudioDevicePropertiesV2 {
+    pub struct_size: u32,
+    pub abi_version: u32,
+    pub device_id: *const c_char,
+    pub name: *const c_char,
+    pub is_default: u8,
+    pub kind: u8,
+    pub _reserved: [u8; 2],
+}
+
 struct AudioEngine {
     settings: DspSettings,
     processor: DspProcessor,
@@ -559,31 +575,28 @@ impl AudioEngine {
     }
 
     fn restart_worker(&mut self) -> Result<(), String> {
-        self.dsp_worker.take();
         let capture =
             LoopbackCapture::start(self.settings.frame_size, self.audio_device_id.clone())?;
-        self.dsp_worker = Some(DspWorker::start(
+        let replacement = DspWorker::start(
             capture,
             Arc::clone(&self.frame_store),
             self.settings.band_count,
             Arc::clone(&self.worker_config),
-        )?);
-        Ok(())
+        );
+        replace_worker_transactionally(&mut self.dsp_worker, replacement)
     }
 
-    fn set_audio_device(&mut self, device_id: String) -> Result<(), String> {
-        let capture = LoopbackCapture::start(self.settings.frame_size, Some(device_id.clone()))?;
-        // Stop the previous producer before handing the new endpoint to the
-        // dedicated worker. Existing leases remain owned by `frame_store` and
-        // are not invalidated by this restart.
-        self.dsp_worker.take();
-        self.audio_device_id = Some(device_id);
-        self.dsp_worker = Some(DspWorker::start(
+    fn set_audio_device(&mut self, device_id: Option<String>) -> Result<(), String> {
+        let capture = LoopbackCapture::start(self.settings.frame_size, device_id.clone())?;
+        let replacement = DspWorker::start(
             capture,
             Arc::clone(&self.frame_store),
             self.settings.band_count,
             Arc::clone(&self.worker_config),
-        )?);
+        );
+        replace_worker_transactionally(&mut self.dsp_worker, replacement)?;
+        self.audio_device_id = device_id;
+        self.last_error = CString::default();
         Ok(())
     }
 
@@ -594,6 +607,22 @@ impl AudioEngine {
     fn timestamp_ms(&self) -> u64 {
         self.capture_timestamp_ms
             .max(self.started_at.elapsed().as_millis() as u64)
+    }
+}
+
+fn replace_worker_transactionally<T, E>(
+    active: &mut Option<T>,
+    replacement: Result<T, E>,
+) -> Result<(), E> {
+    let replacement = replacement?;
+    let _previous = active.replace(replacement);
+    Ok(())
+}
+
+fn audio_device_kind_abi(kind: AudioDeviceKind) -> u8 {
+    match kind {
+        AudioDeviceKind::RenderLoopback => 1,
+        AudioDeviceKind::DirectCapture => 2,
     }
 }
 
@@ -965,7 +994,10 @@ pub unsafe extern "C" fn set_audio_device(handle: *mut c_void, device_id: *const
                 .to_str()
                 .map(str::to_owned)
                 .map_err(|error| error.to_string());
-            match device_id.and_then(|id| engine.set_audio_device(id)) {
+            match device_id.and_then(|id| {
+                let selected = if id == "default" { None } else { Some(id) };
+                engine.set_audio_device(selected)
+            }) {
                 Ok(()) => 1,
                 Err(error) => {
                     engine.set_error(error.to_string());
@@ -1027,6 +1059,77 @@ pub unsafe extern "C" fn get_audio_devices(
 
 #[no_mangle]
 pub unsafe extern "C" fn free_device_list(devices: *mut AudioDeviceProperties, count: u32) {
+    if devices.is_null() {
+        return;
+    }
+    let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
+        let properties = Vec::from_raw_parts(devices, count as usize, count as usize);
+        for property in properties {
+            if !property.device_id.is_null() {
+                drop(CString::from_raw(property.device_id.cast_mut()));
+            }
+            if !property.name.is_null() {
+                drop(CString::from_raw(property.name.cast_mut()));
+            }
+        }
+    }));
+}
+
+/// RF6.2.2: v2 device enumeration preserves v1 while adding a self-describing
+/// layout and the endpoint capture kind. The caller owns the returned list and
+/// must release it with `free_device_list_v2` exactly once.
+#[no_mangle]
+pub unsafe extern "C" fn get_audio_devices_v2(
+    handle: *mut c_void,
+    out_devices: *mut *mut AudioDevicePropertiesV2,
+    out_count: *mut u32,
+) -> u8 {
+    if out_devices.is_null() || out_count.is_null() {
+        return 0;
+    }
+    unsafe {
+        *out_devices = ptr::null_mut();
+        *out_count = 0;
+    }
+    catch_unwind(AssertUnwindSafe(|| {
+        let devices = match enumerate_audio_devices() {
+            Ok(devices) => devices,
+            Err(error) => {
+                with_engine_mut(handle, (), |engine| engine.set_error(error));
+                return 0;
+            }
+        };
+        let mut properties = Vec::with_capacity(devices.len());
+        for device in devices {
+            let Ok(id) = CString::new(device.id) else {
+                continue;
+            };
+            let Ok(name) = CString::new(device.name) else {
+                continue;
+            };
+            properties.push(AudioDevicePropertiesV2 {
+                struct_size: std::mem::size_of::<AudioDevicePropertiesV2>() as u32,
+                abi_version: AUDIO_DEVICE_ABI_VERSION,
+                device_id: id.into_raw(),
+                name: name.into_raw(),
+                is_default: u8::from(device.is_default),
+                kind: audio_device_kind_abi(device.kind),
+                _reserved: [0; 2],
+            });
+        }
+        let count = properties.len() as u32;
+        let properties = properties.into_boxed_slice();
+        unsafe {
+            *out_devices = Box::into_raw(properties) as *mut AudioDevicePropertiesV2;
+            *out_count = count;
+        }
+        1
+    }))
+    .unwrap_or(0)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free_device_list_v2(devices: *mut AudioDevicePropertiesV2, count: u32) {
     if devices.is_null() {
         return;
     }
@@ -1276,5 +1379,46 @@ mod tests {
         let mut bands = [0.16_f32, 0.04];
         scaler.condition_hybrid_band_energies(&mut bands, &ranges, 1.0, false);
         assert!((bands[0].atanh() / bands[1].atanh() - 2.0).abs() < 0.000_1);
+    }
+
+    #[test]
+    fn rf6_2_device_v2_layout_and_kind_mapping_are_stable() {
+        assert_eq!(AUDIO_DEVICE_ABI_VERSION, 2);
+        assert_eq!(audio_device_kind_abi(AudioDeviceKind::RenderLoopback), 1);
+        assert_eq!(audio_device_kind_abi(AudioDeviceKind::DirectCapture), 2);
+        if cfg!(target_pointer_width = "64") {
+            assert_eq!(std::mem::size_of::<AudioDeviceProperties>(), 24);
+            assert_eq!(std::mem::size_of::<AudioDevicePropertiesV2>(), 32);
+        }
+    }
+
+    #[test]
+    fn rf6_2_failed_worker_replacement_preserves_the_active_worker() {
+        let mut active = Some("working");
+        let result = replace_worker_transactionally(&mut active, Err::<&str, _>("failed"));
+        assert_eq!(result, Err("failed"));
+        assert_eq!(active, Some("working"));
+
+        assert_eq!(
+            replace_worker_transactionally(&mut active, Ok::<_, &str>("replacement")),
+            Ok(())
+        );
+        assert_eq!(active, Some("replacement"));
+    }
+
+    #[test]
+    fn rf6_2_device_v2_allocation_uses_matching_free_export() {
+        let properties = vec![AudioDevicePropertiesV2 {
+            struct_size: std::mem::size_of::<AudioDevicePropertiesV2>() as u32,
+            abi_version: AUDIO_DEVICE_ABI_VERSION,
+            device_id: CString::new("device").unwrap().into_raw(),
+            name: CString::new("Microphone").unwrap().into_raw(),
+            is_default: 1,
+            kind: audio_device_kind_abi(AudioDeviceKind::DirectCapture),
+            _reserved: [0; 2],
+        }]
+        .into_boxed_slice();
+        let pointer = Box::into_raw(properties) as *mut AudioDevicePropertiesV2;
+        unsafe { free_device_list_v2(pointer, 1) };
     }
 }

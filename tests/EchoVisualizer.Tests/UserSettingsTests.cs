@@ -10,10 +10,15 @@ namespace EchoVisualizer.Tests
         [Fact]
         public void UserSettingsService_SaveAndLoad_RoundtripsDataCorrectly()
         {
+            var testDirectory = Path.Combine(
+                Path.GetTempPath(),
+                "EchoVisualizer.Tests",
+                Guid.NewGuid().ToString("N"));
+            var testSettingsPath = Path.Combine(testDirectory, "user_settings.json");
             var data = new UserSettingsData
             {
                 SelectedAudioDeviceId = "test-device-id-123",
-                ThemeIndex = 1, // Light
+                ThemePreference = ThemePreference.Light,
                 BandCount = 64,
                 ScalingModeIndex = 1,
                 LayoutIndex = 2,
@@ -29,26 +34,36 @@ namespace EchoVisualizer.Tests
             data.FavoritePresetIds.Add("preset-1");
             data.FavoritePresetIds.Add("preset-2");
 
-            bool saveResult = UserSettingsService.Save(data);
-            Assert.True(saveResult);
+            try
+            {
+                bool saveResult = UserSettingsService.SaveToPath(data, testSettingsPath);
+                Assert.True(saveResult);
 
-            var loaded = UserSettingsService.Load();
-            Assert.NotNull(loaded);
-            Assert.Equal("test-device-id-123", loaded.SelectedAudioDeviceId);
-            Assert.Equal(1, loaded.ThemeIndex);
-            Assert.Equal(64, loaded.BandCount);
-            Assert.Equal(1, loaded.ScalingModeIndex);
-            Assert.Equal(2, loaded.LayoutIndex);
-            Assert.Equal(1, loaded.ColorModeIndex);
-            Assert.Equal(100, loaded.PrimaryR);
-            Assert.Equal(150, loaded.PrimaryG);
-            Assert.Equal(200, loaded.PrimaryB);
-            Assert.Equal(210, loaded.SecondaryR);
-            Assert.Equal(220, loaded.SecondaryG);
-            Assert.Equal(230, loaded.SecondaryB);
-            Assert.Equal("custom-bars-preset", loaded.SelectedPresetId);
-            Assert.Contains("preset-1", loaded.FavoritePresetIds);
-            Assert.Contains("preset-2", loaded.FavoritePresetIds);
+                var loaded = UserSettingsService.LoadFromPath(testSettingsPath);
+                Assert.NotNull(loaded);
+                Assert.Equal("test-device-id-123", loaded.SelectedAudioDeviceId);
+                Assert.Equal(ThemePreference.Light, loaded.ThemePreference);
+                Assert.Equal(64, loaded.BandCount);
+                Assert.Equal(1, loaded.ScalingModeIndex);
+                Assert.Equal(2, loaded.LayoutIndex);
+                Assert.Equal(1, loaded.ColorModeIndex);
+                Assert.Equal(100, loaded.PrimaryR);
+                Assert.Equal(150, loaded.PrimaryG);
+                Assert.Equal(200, loaded.PrimaryB);
+                Assert.Equal(210, loaded.SecondaryR);
+                Assert.Equal(220, loaded.SecondaryG);
+                Assert.Equal(230, loaded.SecondaryB);
+                Assert.Equal("custom-bars-preset", loaded.SelectedPresetId);
+                Assert.Contains("preset-1", loaded.FavoritePresetIds);
+                Assert.Contains("preset-2", loaded.FavoritePresetIds);
+            }
+            finally
+            {
+                if (Directory.Exists(testDirectory))
+                {
+                    Directory.Delete(testDirectory, recursive: true);
+                }
+            }
         }
     }
 }
