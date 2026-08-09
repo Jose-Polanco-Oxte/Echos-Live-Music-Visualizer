@@ -3,9 +3,9 @@
     <EchoProductVersion>0.2.0.19</EchoProductVersion>
     <EchoCoreVersion>0.2.0</EchoCoreVersion>
     <EchoProductName>Echo Visualizer</EchoProductName>
-    <EchoPublisherDisplayName>Echo Visualizer</EchoPublisherDisplayName>
-    <EchoPackageIdentityName>EchoVisualizer</EchoPackageIdentityName>
-    <EchoPackagePublisher>CN=Echo Visualizer Development</EchoPackagePublisher>
+    <EchoPublisherDisplayName>Tun4z</EchoPublisherDisplayName>
+    <EchoPackageIdentityName>Tun4z.EchoVisualizer</EchoPackageIdentityName>
+    <EchoPackagePublisher>CN=8C71527D-01B9-4285-A94B-1585E7C0DA03</EchoPackagePublisher>
     <EchoApplicationId>App</EchoApplicationId>
     <EchoApplicationIcon>Assets\AppIcon.ico</EchoApplicationIcon>
     <EchoBrandBackgroundColor>#03060F</EchoBrandBackgroundColor>
