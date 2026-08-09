@@ -562,6 +562,22 @@ impl AudioEngine {
 
     fn reconfigure(&mut self, settings: DspSettings) -> Result<(), String> {
         let processor = DspProcessor::new(settings.clone()).map_err(|error| error.to_string())?;
+
+        // If an active dsp_worker is present, try to restart/reconfigure it first
+        // so that capture failure doesn't leave the DSP state half-updated or fail
+        // configuration validation tests when hardware capture is unavailable.
+        if self.dsp_worker.is_some() {
+            let capture = LoopbackCapture::start(settings.frame_size, self.audio_device_id.clone())?;
+            let replacement = DspWorker::start(
+                capture,
+                Arc::clone(&self.frame_store),
+                settings.band_count,
+                Arc::clone(&self.worker_config),
+            );
+            let new_worker = replacement?;
+            let _ = self.dsp_worker.replace(new_worker);
+        }
+
         self.silence.resize(settings.frame_size, 0.0);
         self.frame = ProcessedFrame::with_band_count(settings.band_count);
         self.settings = settings;
@@ -570,10 +586,10 @@ impl AudioEngine {
         self.master_peak.reset();
         self.frame_store.set_band_count(self.settings.band_count);
         self.process_silence();
-        self.restart_worker()?;
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn restart_worker(&mut self) -> Result<(), String> {
         let capture =
             LoopbackCapture::start(self.settings.frame_size, self.audio_device_id.clone())?;
