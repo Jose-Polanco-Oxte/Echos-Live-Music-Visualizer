@@ -100,6 +100,16 @@ function Assert-Version {
     }
 }
 
+function ConvertTo-StoreVersion {
+    param([Parameter(Mandatory)][string]$Version)
+
+    Assert-Version $Version
+    # Microsoft Store requires the package version revision (fourth component)
+    # to be zero, so Store submissions use A.B.C.0 regardless of the declared
+    # product build number.
+    return (($Version.Split('.')[0..2] -join '.') + '.0')
+}
+
 function Remove-SafeArtifactDirectory {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -935,6 +945,8 @@ try {
     if (-not $PackageVersion) { $PackageVersion = $manifestMetadata.Version }
     Assert-Version $PackageVersion
     if ($BuildVersion) { Assert-Version $BuildVersion }
+    $StoreVersion = ConvertTo-StoreVersion $PackageVersion
+    Write-Host "Store submission version: $StoreVersion (revision forced to 0)" -ForegroundColor DarkGray
 
     if ($InstallMsix -and -not $SignMsix) {
         throw '-InstallMsix requires -SignMsix.'
@@ -988,7 +1000,7 @@ try {
         foreach ($runtimeIdentifier in $RuntimeIdentifiers) {
             $storeBundles[$runtimeIdentifier] = Build-StoreDistribution `
                 -RuntimeIdentifier $runtimeIdentifier `
-                -Version $PackageVersion `
+                -Version $StoreVersion `
                 -MakeAppxPath $makeAppxPath `
                 -ManifestMetadata $manifestMetadata `
                 -SigningCertificate $signingCertificate
@@ -1003,11 +1015,11 @@ try {
             Install-AndSmokeTestMsix `
                 -BundlePath $storeBundles['win-x64'] `
                 -ManifestMetadata $manifestMetadata `
-                -ExpectedVersion $PackageVersion
+                -ExpectedVersion $StoreVersion
         }
     }
     elseif ($InstallMsix) {
-        Write-Stage "Installing x64 MSIX version $PackageVersion"
+        Write-Stage "Installing x64 MSIX version $StoreVersion"
         Add-AppxPackage -Path $storeBundles['win-x64'] -ForceApplicationShutdown -ForceUpdateFromAnyVersion
     }
 
