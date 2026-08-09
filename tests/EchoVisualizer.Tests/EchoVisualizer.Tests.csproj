@@ -12,8 +12,8 @@
   <!-- Rust Core (EchoCore) Build Configuration for FFI Tests -->
   <PropertyGroup>
     <EchoCoreDirectory>$(MSBuildThisFileDirectory)..\..\src\core\</EchoCoreDirectory>
-    <!-- Default Cargo Resolution: Checks default rustup path, falls back to PATH 'cargo' -->
-    <EchoCoreCargo Condition="Exists('$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe')">$(USERPROFILE)\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe</EchoCoreCargo>
+    <!-- Use rustup's proxy so rust-toolchain.toml selects the pinned toolchain. -->
+    <EchoCoreCargo Condition="Exists('$(USERPROFILE)\.cargo\bin\cargo.exe')">$(USERPROFILE)\.cargo\bin\cargo.exe</EchoCoreCargo>
     <EchoCoreCargo Condition="'$(EchoCoreCargo)' == ''">cargo</EchoCoreCargo>
     
     <EchoCoreProfile Condition="'$(Configuration)' == 'Release'">release</EchoCoreProfile>

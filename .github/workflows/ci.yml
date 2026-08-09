@@ -24,8 +24,8 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Setup Rust Stable Toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust 1.97.1 Toolchain
+        uses: dtolnay/rust-toolchain@1.97.1
         with:
           targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
           components: rustfmt, clippy
