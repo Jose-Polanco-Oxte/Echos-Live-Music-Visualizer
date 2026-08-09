@@ -1,5 +1,6 @@
 ---
 title: Política de Privacidad de Echo Visualizer
+layout: page
 ---
 
 # Política de Privacidad de Echo Visualizer
