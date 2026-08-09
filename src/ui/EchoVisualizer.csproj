@@ -49,9 +49,11 @@
     <MicrosoftWindowsSDKBuildToolsMSIXPackageVersion>1.7.20250829.1</MicrosoftWindowsSDKBuildToolsMSIXPackageVersion>
     <AppxPackage>true</AppxPackage>
     <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
-    <AppxBundle>Always</AppxBundle>
-    <AppxBundlePlatforms Condition="'$(RuntimeIdentifier)' == 'win-arm64' Or '$(Platform)' == 'arm64'">arm64</AppxBundlePlatforms>
-    <AppxBundlePlatforms Condition="'$(AppxBundlePlatforms)' == ''">x64</AppxBundlePlatforms>
+    <!-- One architecture-specific unsigned .msix per runtime identifier. The
+         Store requires each uploaded package to have a unique package full
+         name; per-architecture bundles are neutral and collide. Single
+         packages carry their architecture (x64/arm64) in the identity. -->
+    <AppxBundle>Never</AppxBundle>
     <AppxPackageDir>$(MSBuildThisFileDirectory)..\..\artifacts\store\</AppxPackageDir>
     <AppxPackageSigningEnabled Condition="'$(SignMsix)' == 'true'">true</AppxPackageSigningEnabled>
     <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>

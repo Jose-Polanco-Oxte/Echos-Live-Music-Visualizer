@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version_override:
-        description: 'Optional four-part package version (A.B.C.D)'
+        description: 'Optional four-part product version (A.B.C.D); Store packages are built with revision 0 (A.B.C.0)'
         required: false
         type: string
         default: ''
@@ -53,7 +53,8 @@ jobs:
               throw "Package version components must be between 0 and 65535: $version"
             }
           }
-          "version=$version" >> $env:GITHUB_OUTPUT
+          $storeVersion = ($version.Split('.')[0..2] -join '.') + '.0'
+          "version=$storeVersion" >> $env:GITHUB_OUTPUT
 
       - name: Compile and Validate Store MSIX Bundle
         shell: pwsh
