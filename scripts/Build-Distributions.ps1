@@ -632,62 +632,78 @@ function Build-GitHubDistribution {
     Write-Host "Validated GitHub distribution: $output" -ForegroundColor Green
 }
 
-function Expand-MsixBundle {
+function Expand-StorePackage {
     param(
-        [Parameter(Mandatory)][string]$BundlePath,
+        [Parameter(Mandatory)][string]$PackagePath,
         [Parameter(Mandatory)][string]$MakeAppxPath,
         [Parameter(Mandatory)][string]$RuntimeIdentifier
     )
 
     $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("echo-msix-{0}" -f [guid]::NewGuid().ToString('N'))
-    $bundleDirectory = Join-Path $temporaryRoot 'bundle'
     $packageDirectory = Join-Path $temporaryRoot 'package'
     $aggregateAssetsDirectory = Join-Path $temporaryRoot 'aggregate-assets'
-    New-Item -ItemType Directory -Path $bundleDirectory, $packageDirectory, $aggregateAssetsDirectory | Out-Null
+    New-Item -ItemType Directory -Path $packageDirectory, $aggregateAssetsDirectory | Out-Null
 
     try {
-        Invoke-NativeTool $MakeAppxPath @('unbundle', '/p', $BundlePath, '/d', $bundleDirectory, '/o')
-        $platform = Get-PlatformForRuntime $RuntimeIdentifier
-        $innerPackage = Get-ChildItem -LiteralPath $bundleDirectory -Filter '*.msix' -File |
-            Where-Object { $_.Name -match "_$platform\.msix$" } |
-            Select-Object -First 1
-        if (-not $innerPackage) {
-            $innerPackage = Get-ChildItem -LiteralPath $bundleDirectory -Filter '*.msix' -File | Select-Object -First 1
-        }
-        if (-not $innerPackage) {
-            throw "No inner MSIX package was found in $BundlePath."
-        }
-
-        Invoke-NativeTool $MakeAppxPath @('unpack', '/p', $innerPackage.FullName, '/d', $packageDirectory, '/o')
-
-        $packageIndex = 0
-        foreach ($bundlePackage in Get-ChildItem -LiteralPath $bundleDirectory -Filter '*.msix' -File) {
-            $expandedDirectory = if ($bundlePackage.FullName -eq $innerPackage.FullName) {
-                $packageDirectory
+        $isBundle = ($PackagePath -like '*.msixbundle') -or ($PackagePath -like '*.appxbundle')
+        if ($isBundle) {
+            $bundleDirectory = Join-Path $temporaryRoot 'bundle'
+            New-Item -ItemType Directory -Path $bundleDirectory -Force | Out-Null
+            Invoke-NativeTool $MakeAppxPath @('unbundle', '/p', $PackagePath, '/d', $bundleDirectory, '/o')
+            $platform = Get-PlatformForRuntime $RuntimeIdentifier
+            $innerPackage = Get-ChildItem -LiteralPath $bundleDirectory -Filter '*.msix' -File |
+                Where-Object { $_.Name -match "_$platform\.msix$" } |
+                Select-Object -First 1
+            if (-not $innerPackage) {
+                $innerPackage = Get-ChildItem -LiteralPath $bundleDirectory -Filter '*.msix' -File | Select-Object -First 1
             }
-            else {
-                $packageIndex++
-                $resourceDirectory = Join-Path $temporaryRoot "resource-package-$packageIndex"
-                New-Item -ItemType Directory -Path $resourceDirectory | Out-Null
-                Invoke-NativeTool $MakeAppxPath @('unpack', '/p', $bundlePackage.FullName, '/d', $resourceDirectory, '/o')
-                $resourceDirectory
+            if (-not $innerPackage) {
+                throw "No inner MSIX package was found in $PackagePath."
             }
+            Invoke-NativeTool $MakeAppxPath @('unpack', '/p', $innerPackage.FullName, '/d', $packageDirectory, '/o')
 
-            $assetDirectory = Join-Path $expandedDirectory 'Assets'
-            if (-not (Test-Path -LiteralPath $assetDirectory -PathType Container)) {
-                continue
-            }
-            foreach ($asset in Get-ChildItem -LiteralPath $assetDirectory -File) {
-                $destination = Join-Path $aggregateAssetsDirectory $asset.Name
-                if (Test-Path -LiteralPath $destination -PathType Leaf) {
-                    $existingHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
-                    $incomingHash = (Get-FileHash -LiteralPath $asset.FullName -Algorithm SHA256).Hash
-                    if ($existingHash -ne $incomingHash) {
-                        throw "Bundle contains conflicting brand asset projections: $($asset.Name)"
-                    }
+            $packageIndex = 0
+            foreach ($bundlePackage in Get-ChildItem -LiteralPath $bundleDirectory -Filter '*.msix' -File) {
+                $expandedDirectory = if ($bundlePackage.FullName -eq $innerPackage.FullName) {
+                    $packageDirectory
+                }
+                else {
+                    $packageIndex++
+                    $resourceDirectory = Join-Path $temporaryRoot "resource-package-$packageIndex"
+                    New-Item -ItemType Directory -Path $resourceDirectory -Force | Out-Null
+                    Invoke-NativeTool $MakeAppxPath @('unpack', '/p', $bundlePackage.FullName, '/d', $resourceDirectory, '/o')
+                    $resourceDirectory
+                }
+
+                $assetDirectory = Join-Path $expandedDirectory 'Assets'
+                if (-not (Test-Path -LiteralPath $assetDirectory -PathType Container)) {
                     continue
                 }
-                Copy-Item -LiteralPath $asset.FullName -Destination $destination
+                foreach ($asset in Get-ChildItem -LiteralPath $assetDirectory -File) {
+                    $destination = Join-Path $aggregateAssetsDirectory $asset.Name
+                    if (Test-Path -LiteralPath $destination -PathType Leaf) {
+                        $existingHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+                        $incomingHash = (Get-FileHash -LiteralPath $asset.FullName -Algorithm SHA256).Hash
+                        if ($existingHash -ne $incomingHash) {
+                            throw "Bundle contains conflicting brand asset projections: $($asset.Name)"
+                        }
+                        continue
+                    }
+                    Copy-Item -LiteralPath $asset.FullName -Destination $destination
+                }
+            }
+        }
+        else {
+            Invoke-NativeTool $MakeAppxPath @('unpack', '/p', $PackagePath, '/d', $packageDirectory, '/o')
+            $assetDirectory = Join-Path $packageDirectory 'Assets'
+            if (Test-Path -LiteralPath $assetDirectory -PathType Container) {
+                foreach ($asset in Get-ChildItem -LiteralPath $assetDirectory -File) {
+                    $destination = Join-Path $aggregateAssetsDirectory $asset.Name
+                    if (Test-Path -LiteralPath $destination -PathType Leaf) {
+                        continue
+                    }
+                    Copy-Item -LiteralPath $asset.FullName -Destination $destination
+                }
             }
         }
 
@@ -817,22 +833,22 @@ function Build-StoreDistribution {
         Remove-Item -LiteralPath $manifestOverride -Force -ErrorAction SilentlyContinue
     }
 
-    $bundle = Get-ChildItem -LiteralPath $output -Filter '*.msixbundle' -File -Recurse |
+    $package = Get-ChildItem -LiteralPath $output -Filter '*.msix' -File -Recurse |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
-    if (-not $bundle) {
-        throw "MSIX bundle was not produced under $output."
+    if (-not $package) {
+        throw "Store MSIX package was not produced under $output."
     }
 
-    $signature = Get-AuthenticodeSignature -LiteralPath $bundle.FullName
+    $signature = Get-AuthenticodeSignature -LiteralPath $package.FullName
     if ($SigningCertificate -and $signature.Status -ne 'Valid') {
-        throw "Signed MSIX bundle does not have a valid Authenticode signature: $($signature.Status)"
+        throw "Signed MSIX package does not have a valid Authenticode signature: $($signature.Status)"
     }
     if (-not $SigningCertificate -and $signature.Status -notin @('NotSigned', 'UnknownError')) {
         throw "Unexpected unsigned MSIX signature status: $($signature.Status)"
     }
 
-    $expanded = Expand-MsixBundle -BundlePath $bundle.FullName -MakeAppxPath $MakeAppxPath -RuntimeIdentifier $RuntimeIdentifier
+    $expanded = Expand-StorePackage -PackagePath $package.FullName -MakeAppxPath $MakeAppxPath -RuntimeIdentifier $RuntimeIdentifier
     try {
         Assert-MsixManifest `
             -PackageDirectory $expanded.PackageDirectory `
@@ -845,8 +861,8 @@ function Build-StoreDistribution {
         Remove-Item -LiteralPath $expanded.TemporaryRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    Write-Host "Validated Store distribution: $($bundle.FullName)" -ForegroundColor Green
-    return $bundle.FullName
+    Write-Host "Validated Store distribution: $($package.FullName)" -ForegroundColor Green
+    return $package.FullName
 }
 
 function Invoke-ProcessSmokeTest {
