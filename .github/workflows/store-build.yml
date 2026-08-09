@@ -29,15 +29,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v7
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v6
+      - name: Setup pinned build toolchain (${{ matrix.rust_target }})
+        uses: ./.github/actions/setup-windows-build
         with:
-          global-json-file: global.json
-
-      - name: Setup Rust Stable Toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
+          rust-targets: ${{ matrix.rust_target }}
 
       - name: Resolve Package Version
         id: package

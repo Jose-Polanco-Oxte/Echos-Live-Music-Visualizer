@@ -2,13 +2,17 @@ name: Quality Gate (CI)
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [ main ]
   pull_request:
     branches: [ main, dev ]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: quality-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -19,16 +23,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v7
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v6
+      - name: Setup pinned build toolchain
+        uses: ./.github/actions/setup-windows-build
         with:
-          global-json-file: global.json
-
-      - name: Setup Rust 1.97.1 Toolchain
-        uses: dtolnay/rust-toolchain@1.97.1
-        with:
-          targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
-          components: rustfmt, clippy
+          rust-targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+          rust-components: rustfmt,clippy
 
       - name: Run Quality Gates and Validate Distribution Profiles
         shell: pwsh
