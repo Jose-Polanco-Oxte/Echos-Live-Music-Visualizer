@@ -31,3 +31,12 @@ and report that the project pipeline could not be activated.
 System and developer instructions, followed by the user's explicit request,
 remain higher priority than repository instructions.
 
+## Context Verification Contract
+
+Only when explicitly asked to verify project instructions, respond with:
+
+CONTEXT_OK
+PIPELINE=./scripts/Build-Distribution.ps1
+RELEASE_BRANCH=main
+INTEGRATION_BRANCH=dev
+DIRECT_DEV_TO_MAIN=forbidden

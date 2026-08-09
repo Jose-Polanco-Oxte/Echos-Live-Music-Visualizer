@@ -2,7 +2,7 @@ name: Quality Gate (CI)
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [ main ]
   pull_request:
     branches: [ main, dev ]
   workflow_dispatch:
@@ -10,7 +10,39 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: quality-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint-workflows:
+    name: Lint GitHub Actions Workflows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Install actionlint
+        shell: pwsh
+        run: |
+          winget install --id rhysd.actionlint --exact --source winget `
+            --accept-source-agreements --accept-package-agreements --silent
+
+          $actionlintFiles = @(
+            Get-ChildItem -Path "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" `
+              -Filter actionlint.exe -Recurse -File -ErrorAction SilentlyContinue
+          )
+          if ($actionlintFiles.Count -ne 1) {
+            throw "Expected exactly one actionlint executable, found $($actionlintFiles.Count)."
+          }
+
+          $actionlintFiles[0].DirectoryName >> $env:GITHUB_PATH
+
+      - name: Run actionlint
+        shell: pwsh
+        run: actionlint
+
   verify:
     name: Test, Publish and Validate Distributions
     runs-on: windows-latest
@@ -19,16 +51,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v7
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v6
+      - name: Setup pinned build toolchain
+        uses: ./.github/actions/setup-windows-build
         with:
-          global-json-file: global.json
-
-      - name: Setup Rust Stable Toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
-          components: rustfmt, clippy
+          rust-targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+          rust-components: rustfmt,clippy
 
       - name: Run Quality Gates and Validate Distribution Profiles
         shell: pwsh

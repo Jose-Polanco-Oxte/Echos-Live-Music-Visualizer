@@ -6,7 +6,7 @@
 
   **Ultra-Low Latency, High-Fidelity Real-Time Audio Visualizer for Windows**
 
-  [![Version](https://img.shields.io/badge/version-v0.2.0.17-cyan.svg?style=for-the-badge)](https://github.com/)
+  [![Version](https://img.shields.io/badge/version-v0.2.0.19-cyan.svg?style=for-the-badge)](https://github.com/)
   [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64%20%7C%20ARM64-blue.svg?style=for-the-badge)](https://microsoft.com)
   [![Framework](https://img.shields.io/badge/UI-WinUI%203%20%2F%20Windows%20App%20SDK-purple.svg?style=for-the-badge)](https://learn.microsoft.com/windows/apps/winui/winui3/)
   [![Engine](https://img.shields.io/badge/DSP-Rust%20FFI-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
@@ -92,7 +92,7 @@ package version while also smoke-testing the unpackaged executable:
 .\scripts\Build-Distributions.ps1 `
   -Profile Both `
   -RuntimeIdentifiers win-x64,win-arm64 `
-  -PackageVersion 0.2.0.17 `
+  -PackageVersion 0.2.0.19 `
   -SignMsix `
   -InstallMsix `
   -SmokeTest

@@ -22,17 +22,25 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <!-- GitHub Unpackaged Self-Contained Profile -->
-  <PropertyGroup Condition="'$(BuildingForGitHub)' == 'true' Or '$(WindowsPackageType)' == 'None'">
-    <WindowsPackageType>None</WindowsPackageType>
-    <!-- Required by Windows App SDK to merge WinUI framework resources into the
-         unpackaged PRI graph. This does not create an MSIX package. -->
-    <EnableMsixTooling>true</EnableMsixTooling>
-    <AppxPackage>false</AppxPackage>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <SelfContained>true</SelfContained>
-    <PublishDir>$(MSBuildThisFileDirectory)..\..\artifacts\github\$(RuntimeIdentifier)\</PublishDir>
-  </PropertyGroup>
+<!-- GitHub Unpackaged Self-Contained Profile -->
+<PropertyGroup Condition="'$(BuildingForGitHub)' == 'true' Or '$(WindowsPackageType)' == 'None'">
+  <WindowsPackageType>None</WindowsPackageType>
+
+  <!-- Required by Windows App SDK to merge WinUI framework resources into the
+       unpackaged PRI graph. This does not create an MSIX package. -->
+  <EnableMsixTooling>true</EnableMsixTooling>
+
+  <AppxPackage>false</AppxPackage>
+
+  <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+
+  <!-- Required for unpackaged WinUI/WinRT activation without package identity. -->
+  <WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+
+  <SelfContained>true</SelfContained>
+
+  <PublishDir>$(MSBuildThisFileDirectory)..\..\artifacts\github\$(RuntimeIdentifier)\</PublishDir>
+</PropertyGroup>
 
   <!-- Store Packaged MSIX Profile (Default) -->
   <PropertyGroup Condition="'$(BuildingForGitHub)' != 'true' And '$(WindowsPackageType)' != 'None'">

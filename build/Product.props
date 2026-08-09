@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <EchoProductVersion>0.2.0.17</EchoProductVersion>
+    <EchoProductVersion>0.2.0.19</EchoProductVersion>
     <EchoCoreVersion>0.2.0</EchoCoreVersion>
     <EchoProductName>Echo Visualizer</EchoProductName>
     <EchoPublisherDisplayName>Echo Visualizer</EchoPublisherDisplayName>
