@@ -61,3 +61,22 @@ Thank you for your interest in contributing to Echo Visualizer! This repository 
 Use the shared script instead of direct `dotnet publish` commands. It validates
 effective MSBuild properties, PE architecture, WinUI PRI resources, canonical
 metadata, branding assets, package capabilities, and distribution payloads.
+
+---
+
+## 🛒 Microsoft Store Publishing
+
+- **First submission is manual** in Partner Center. Build the Store packages
+  with `scripts/Build-Distributions.ps1 -Profile Store -RuntimeIdentifiers win-x64,win-arm64`
+  and upload the two architecture-specific `.msix` files together (version
+  `A.B.C.0`). Do not upload bundles or the `Dependencies\` folder.
+- **Continuous updates** are automated with the **Microsoft Store Continuous
+  Delivery** workflow (`store-publish.yml`) using StoreBroker. Configure the
+  GitHub Secrets `STORE_APP_ID`, `STORE_CLIENT_ID`, `STORE_CLIENT_SECRET` and
+  `STORE_TENANT_ID`, then dispatch with `version_override`, `target_publish_mode`,
+  `rollout_percentage`, etc. Use the `dry_run` input to preview without
+  submitting.
+- **Never commit credentials.** StoreBroker configuration lives in
+  `docs/store/` without secrets; credentials are injected at submission time.
+- See `docs/public/publishing/microsoft-store.md` and `docs/store/README.md`
+  for the full procedure.

@@ -1,0 +1,218 @@
+name: Microsoft Store Continuous Delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Optional four-part product version (A.B.C.D); Store packages are built with revision 0 (A.B.C.0)'
+        required: false
+        type: string
+        default: ''
+      target_publish_mode:
+        description: 'When to publish after certification (Default reuses the previous submission)'
+        required: true
+        type: choice
+        options:
+          - Immediate
+          - Manual
+          - SpecificDate
+          - Default
+        default: Immediate
+      publish_date:
+        description: 'Required for SpecificDate. Local date/time, e.g. 2026-08-20 10:00'
+        required: false
+        type: string
+        default: ''
+      rollout_percentage:
+        description: 'Optional gradual rollout 0-100 (0 disables; must then be finalized in Partner Center)'
+        required: false
+        type: string
+        default: ''
+      release:
+        description: 'Optional release label used for the PDP/Images snapshot'
+        required: false
+        type: string
+        default: ''
+      notes_for_certification:
+        description: 'Optional notes for certification testers'
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: 'Prepare the payload and print the plan without calling the submission API'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-submit:
+    name: Build and Submit to Microsoft Store
+    runs-on: windows-latest
+    if: ${{ !inputs.dry_run }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Setup pinned build toolchain
+        uses: ./.github/actions/setup-windows-build
+        with:
+          rust-targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+
+      - name: Resolve Store Version
+        id: package
+        shell: pwsh
+        env:
+          VERSION_OVERRIDE: ${{ inputs.version_override }}
+        run: |
+          $version = $env:VERSION_OVERRIDE.Trim()
+          $metadata = ./scripts/Test-ProductConfiguration.ps1 -AsJson | ConvertFrom-Json
+          if (-not $version) {
+            $version = $metadata.Version
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+            throw "Package version must use A.B.C.D: $version"
+          }
+          foreach ($component in $version.Split('.')) {
+            if ([int]$component -gt 65535) {
+              throw "Package version components must be between 0 and 65535: $version"
+            }
+          }
+          $storeVersion = ($version.Split('.')[0..2] -join '.') + '.0'
+          "version=$storeVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Compile and Validate Store MSIX Packages
+        shell: pwsh
+        run: >-
+          ./scripts/Build-Distributions.ps1
+          -Profile Store
+          -RuntimeIdentifiers win-x64,win-arm64
+          -PackageVersion ${{ steps.package.outputs.version }}
+          -SkipTests
+
+      - name: Upload Store MSIX Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: EchoVisualizer-Store-MSIX-${{ steps.package.outputs.version }}
+          path: |
+            artifacts/store-test/**/*.msix
+
+      - name: Install StoreBroker
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable -Name StoreBroker)) {
+            Install-Module -Name StoreBroker -Force -Scope CurrentUser
+          }
+          Import-Module -Name StoreBroker -Force
+
+      - name: Preflight submission credentials
+        if: ${{ !inputs.dry_run }}
+        shell: pwsh
+        run: |
+          $missing = @(
+            if ($env:STORE_APP_ID) { } else { 'STORE_APP_ID' }
+            if ($env:STORE_CLIENT_ID) { } else { 'STORE_CLIENT_ID' }
+            if ($env:STORE_CLIENT_SECRET) { } else { 'STORE_CLIENT_SECRET' }
+            if ($env:STORE_TENANT_ID) { } else { 'STORE_TENANT_ID' }
+          )
+          if ($missing.Count -gt 0) {
+            throw "Missing GitHub Secrets: $($missing -join ', '). See docs/public/publishing/microsoft-store.md."
+          }
+
+      - name: Submit Store Update
+        shell: pwsh
+        env:
+          STORE_APP_ID: ${{ secrets.STORE_APP_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_VERSION: ${{ steps.package.outputs.version }}
+          TARGET_PUBLISH_MODE: ${{ inputs.target_publish_mode }}
+          PUBLISH_DATE: ${{ inputs.publish_date }}
+          ROLLOUT_PERCENTAGE: ${{ inputs.rollout_percentage }}
+          RELEASE: ${{ inputs.release }}
+          NOTES_FOR_CERTIFICATION: ${{ inputs.notes_for_certification }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          $scriptArgs = @(
+            '-AppId', $env:STORE_APP_ID,
+            '-StoreVersion', $env:STORE_VERSION
+          )
+          if ($env:TARGET_PUBLISH_MODE) { $scriptArgs += @('-TargetPublishMode', $env:TARGET_PUBLISH_MODE) }
+          if ($env:PUBLISH_DATE) { $scriptArgs += @('-TargetPublishDate', $env:PUBLISH_DATE) }
+          if ($env:ROLLOUT_PERCENTAGE -match '^\d+$') { $scriptArgs += @('-RolloutPercentage', [int]$env:ROLLOUT_PERCENTAGE) }
+          if ($env:RELEASE) { $scriptArgs += @('-Release', $env:RELEASE) }
+          if ($env:NOTES_FOR_CERTIFICATION) { $scriptArgs += @('-NotesForCertification', $env:NOTES_FOR_CERTIFICATION) }
+          if ($env:DRY_RUN -eq 'true') { $scriptArgs += '-DryRun' }
+          & ./scripts/Submit-StoreUpdate.ps1 @scriptArgs
+          if ($LASTEXITCODE -ne 0) { throw "Submit-StoreUpdate.ps1 exited with code $LASTEXITCODE" }
+
+  dry-run:
+    name: Dry Run (No API Call)
+    runs-on: windows-latest
+    if: ${{ inputs.dry_run }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Setup pinned build toolchain
+        uses: ./.github/actions/setup-windows-build
+        with:
+          rust-targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+
+      - name: Resolve Store Version
+        id: package
+        shell: pwsh
+        env:
+          VERSION_OVERRIDE: ${{ inputs.version_override }}
+        run: |
+          $version = $env:VERSION_OVERRIDE.Trim()
+          $metadata = ./scripts/Test-ProductConfiguration.ps1 -AsJson | ConvertFrom-Json
+          if (-not $version) {
+            $version = $metadata.Version
+          }
+          $storeVersion = ($version.Split('.')[0..2] -join '.') + '.0'
+          "version=$storeVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Compile and Validate Store MSIX Packages
+        shell: pwsh
+        run: >-
+          ./scripts/Build-Distributions.ps1
+          -Profile Store
+          -RuntimeIdentifiers win-x64,win-arm64
+          -PackageVersion ${{ steps.package.outputs.version }}
+          -SkipTests
+
+      - name: Install StoreBroker
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable -Name StoreBroker)) {
+            Install-Module -Name StoreBroker -Force -Scope CurrentUser
+          }
+          Import-Module -Name StoreBroker -Force
+
+      - name: Prepare payload (dry run)
+        shell: pwsh
+        env:
+          STORE_VERSION: ${{ steps.package.outputs.version }}
+          TARGET_PUBLISH_MODE: ${{ inputs.target_publish_mode }}
+          PUBLISH_DATE: ${{ inputs.publish_date }}
+          ROLLOUT_PERCENTAGE: ${{ inputs.rollout_percentage }}
+          RELEASE: ${{ inputs.release }}
+          NOTES_FOR_CERTIFICATION: ${{ inputs.notes_for_certification }}
+        run: |
+          $scriptArgs = @(
+            '-StoreVersion', $env:STORE_VERSION,
+            '-DryRun'
+          )
+          if ($env:TARGET_PUBLISH_MODE) { $scriptArgs += @('-TargetPublishMode', $env:TARGET_PUBLISH_MODE) }
+          if ($env:PUBLISH_DATE) { $scriptArgs += @('-TargetPublishDate', $env:PUBLISH_DATE) }
+          if ($env:ROLLOUT_PERCENTAGE -match '^\d+$') { $scriptArgs += @('-RolloutPercentage', [int]$env:ROLLOUT_PERCENTAGE) }
+          if ($env:RELEASE) { $scriptArgs += @('-Release', $env:RELEASE) }
+          if ($env:NOTES_FOR_CERTIFICATION) { $scriptArgs += @('-NotesForCertification', $env:NOTES_FOR_CERTIFICATION) }
+          & ./scripts/Submit-StoreUpdate.ps1 @scriptArgs
+          if ($LASTEXITCODE -ne 0) { throw "Submit-StoreUpdate.ps1 exited with code $LASTEXITCODE" }

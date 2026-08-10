@@ -1,0 +1,17 @@
+{
+  "applicationId": "",
+  "applicationVersion": "0.2.0.0",
+  "serviceEndpoint": 200,
+  "clientId": "",
+  "tenantId": "",
+  "clientSecret": "",
+  "release": "",
+  "pdpRootPath": "",
+  "pdpInclude": "PDP.xml",
+  "pdpExclude": "",
+  "languageExclude": ["default"],
+  "imagesRootPath": "",
+  "appxPath": "",
+  "outPath": "",
+  "outName": "submission"
+}
