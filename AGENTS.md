@@ -36,7 +36,11 @@ remain higher priority than repository instructions.
 Only when explicitly asked to verify project instructions, respond with:
 
 CONTEXT_OK
+
 PIPELINE=./scripts/Build-Distribution.ps1
+
 RELEASE_BRANCH=main
+
 INTEGRATION_BRANCH=dev
+
 DIRECT_DEV_TO_MAIN=forbidden
