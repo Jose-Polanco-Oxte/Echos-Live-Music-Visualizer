@@ -1420,17 +1420,43 @@ release, submit to Store or change the D5 mapping without replanning.
 
 | Step | Status | Latest checkpoint/evidence |
 |---|---|---|
-| S1 | `NOT_STARTED` | Awaiting explicit execution authorization. |
+| S1 | `IN_PROGRESS` | Git baseline `VERIFIED` (CP-002); Partner Center confirmation `BLOCKED` (no credentials). |
 | S2 | `NOT_STARTED` | D19 contract verified at plan level only. |
-| S3 | `NOT_STARTED` | Pending S1/S2. |
+| S3 | `NOT_STARTED` | Pending S2. |
 | S4 | `NOT_STARTED` | Pending S2/S3. |
-| S5 | `NOT_STARTED` | Pending S1/S2. |
+| S5 | `NOT_STARTED` | Pending S2. |
 | S6 | `NOT_STARTED` | Pending S2–S5 and external secrets. |
 | S7 | `NOT_STARTED` | Pending S5. |
 | S8 | `NOT_STARTED` | Pending implemented behavior from S3–S7. |
 | S9 | `NOT_STARTED` | Pending S1–S8. |
 
 ## Checkpoint Ledger
+
+### CP-002 — Execution baseline established; S2 next
+
+- **Plan status:** `IN_PROGRESS`.
+- **Verification state:** `VERIFIED` for the Git baseline; Partner Center
+  external confirmation remains `BLOCKED`.
+- **Execution branch:** `ci/microsoft-store-release-cd`, created from
+  `c5b6a5804cdb2217b4ea5ed0c2174745fe2e03ee`.
+- **Repository revision:** `c5b6a58` baseline; plan baseline committed as
+  `7180884` (plan file + INDEX activation row).
+- **Working tree:** clean after the baseline commit.
+- **Changes since CP-001:** execution authorized; plan status set to
+  `IN_PROGRESS`; execution branch created; baseline committed;
+  `status`/`handoff` sections updated.
+- **S1 Partner Center confirmation:** `BLOCKED`. No `PARTNER_CENTER_*` or
+  `STORE_*` credentials, no `msstore` CLI, no StoreBroker module or local
+  secrets exist in this environment. Evidence cannot be fabricated; the live
+  Store version/identity/package-history confirmation must be completed by an
+  operator with Partner Center access before the first live deployment.
+- **Validation:** `git status` clean; branch/`HEAD` verified; plan parsed.
+- **Conformance:** `CONFORMING` for the authorized baseline portion.
+- **Compliance changes:** none yet (R3/R4/R5/R16 partial evidence starts at S2).
+- **Open deviations:** none.
+- **Blockers:** S1 live Partner Center confirmation (external credentials).
+- **Next exact action:** S2 — implement `Product.props` schema 1 and
+  `Get-EchoDistributionConfiguration`, migrate branding, add fixtures/tests.
 
 ### CP-001 — Research and centralized-configuration revision complete
 
@@ -1493,19 +1519,26 @@ plan revision rather than an execution deviation.
 
 ## Handoff Snapshot
 
-- **Current objective:** wait for explicit authorization to implement
-  `PLAN-20260811-MICROSOFT-STORE-RELEASE-CD`.
-- **Current step:** none; S1 is next.
+- **Current objective:** implement
+  `PLAN-20260811-MICROSOFT-STORE-RELEASE-CD` on the execution branch.
+- **Current step:** S1 baseline complete for Git; Partner Center read-only
+  confirmation blocked by missing credentials; S2 is next.
+- **Pipeline status:** execution branch `ci/microsoft-store-release-cd` created
+  at `c5b6a58`; plan baseline committed (`7180884`); plan status `IN_PROGRESS`.
 - **Configuration contract:** D19 is locked. Implementation must begin by
   extending `build/Product.props`, adding the sole shared parser and migrating
   `build/branding.json`; no parallel configuration source is permitted.
 - **Key risk:** current Store version/package history is documented but not
-  authenticated from Partner Center in this planning session.
-- **No-action boundary:** do not create a branch, release, credential or Store
-  submission merely because this plan is `READY`.
+  authenticated from Partner Center in this session; no
+  `PARTNER_CENTER_*`/`STORE_*` credentials or `msstore` CLI are available in
+  this environment, so live Store confirmation stays `BLOCKED`.
+- **No-action boundary:** do not create a Store submission or GitHub Release;
+  do not invent Partner Center evidence.
 
 ## Outcomes & Retrospective
 
-Pending execution. The planning outcome is a verified implementation-ready
-contract with one versioned distribution source and no authorized CI/CD
-mutation yet.
+Pending completion of implementation. Planning outcome is a verified
+implementation-ready contract with one versioned distribution source and no
+authorized CI/CD mutation yet. Execution began at S1 under explicit user
+authorization; live Partner Center confirmation remains an external
+`BLOCKED` item requiring operator credentials.
