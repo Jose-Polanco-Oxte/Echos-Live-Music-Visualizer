@@ -47,36 +47,43 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_TAG: ${{ github.event.release.tag_name }}
           INPUT_TAG: ${{ inputs.release_tag }}
+          REPO: ${{ github.repository }}
         run: |
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
           $tagName = if ($env:EVENT_NAME -eq 'release') { $env:EVENT_TAG } else { $env:INPUT_TAG.Trim() }
           if (-not $tagName) { throw 'A release tag is required.' }
           if ($tagName -notmatch '^v(?<version>\d+\.\d+\.\d+\.\d+)$') {
             throw "Release tag must use vA.B.C.D: $tagName"
           }
+          $productVersion = $Matches.version
 
           # Only a published, non-draft, non-prerelease stable release qualifies.
-          $releaseInfo = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tagName" --jq '{tag_name, draft, prerelease, id, target_commitish}' | ConvertFrom-Json
+          $releaseInfo = Get-EchoGitHubReleaseByTag -Repository $env:REPO -Tag $tagName
+          if (-not $releaseInfo) { throw "Release $tagName was not found." }
           if ($releaseInfo.draft -eq $true) { throw "Release $tagName is a draft; production Store CD is not allowed." }
           if ($releaseInfo.prerelease -eq $true) { throw "Release $tagName is a prerelease; production Store CD is not allowed." }
-          if (-not $releaseInfo.id) { throw "Release $tagName was not found." }
+
+          # R3/R8: the source SHA is the resolved commit for the tag, never
+          # target_commitish (which may be a branch name or an older commit).
+          $sha = Resolve-EchoTagCommitSha -Repository $env:REPO -Tag $tagName
 
           # Verify release asset set includes the Store bundle and manifest.
-          $assets = gh api "repos/$env:GITHUB_REPOSITORY/releases/$($releaseInfo.id)/assets" --jq '.[].name' | ConvertFrom-Json
-          $productVersion = $Matches.version
+          $remoteAssets = @(Get-EchoReleaseAssetSet -ReleaseInfo $releaseInfo)
+          $remoteNames = @($remoteAssets | ForEach-Object { $_.name })
           $expectedAssets = @(
             "EchoVisualizer-$productVersion-msixbundle.msixbundle",
             "EchoVisualizer-$productVersion-release-manifest.json",
             'SHA256SUMS.txt'
           )
           foreach ($expected in $expectedAssets) {
-            if ($assets -notcontains $expected) {
+            if ($remoteNames -notcontains $expected) {
               throw "Release $tagName is missing expected Store asset '$expected'."
             }
           }
 
           'tag_name=' + $tagName >> $env:GITHUB_OUTPUT
           'version=' + $productVersion >> $env:GITHUB_OUTPUT
-          'tag_sha=' + $releaseInfo.target_commitish >> $env:GITHUB_OUTPUT
+          'tag_sha=' + $sha >> $env:GITHUB_OUTPUT
 
   validate-package:
     name: Validate Downloadable Store Package
@@ -84,8 +91,10 @@ jobs:
     runs-on: windows-2025
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Source SHA
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve-release.outputs.tag_sha }}
 
       - name: Download Store Bundle Asset
         id: download
@@ -112,16 +121,16 @@ jobs:
         env:
           TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
         run: |
+          # R5: SHA256SUMS.txt is validated by the exact name -> hash pair, not by
+          # matching a bare hash on any line.
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
           gh release download "$env:TAG_NAME" -p 'SHA256SUMS.txt' -D artifacts --clobber
-          $bundle = Get-ChildItem 'artifacts/*.msixbundle' -File | Select-Object -First 1
-          if (-not $bundle) { throw 'Store bundle was not downloaded.' }
-          $actual = (Get-FileHash $bundle.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          $sums = Get-Content 'artifacts/SHA256SUMS.txt'
-          $expected = $sums | Where-Object { $_ -match "^$actual  " }
-          if (-not $expected) {
-            throw "Bundle SHA-256 $actual is not listed in the release SHA256SUMS.txt."
-          }
-          Write-Host "Bundle SHA-256 $actual verified against release checksums."
+          $bundle = @(Get-ChildItem 'artifacts/*.msixbundle' -File)
+          if ($bundle.Count -ne 1) { throw 'Expected exactly one Store bundle in downloaded assets.' }
+          $actual = (Get-FileHash $bundle[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sumsText = Get-Content 'artifacts/SHA256SUMS.txt' -Raw
+          $null = Test-EchoChecksumPair -ChecksumsContent $sumsText -FileName $bundle[0].Name -ActualSha256 $actual
+          Write-Host "Bundle SHA-256 $actual verified against release checksums by exact file name."
 
       - name: Upload Store Bundle to Submit Job
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -130,6 +139,7 @@ jobs:
           path: |
             artifacts/*.msixbundle
             artifacts/*release-manifest.json
+            artifacts/SHA256SUMS.txt
           if-no-files-found: error
 
   submit-or-resume:
@@ -142,8 +152,10 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Source SHA
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve-release.outputs.tag_sha }}
 
       - name: Setup pinned build toolchain
         uses: ./.github/actions/setup-windows-build
@@ -159,17 +171,34 @@ jobs:
 
       - name: Verify Downloaded Payload Hashes
         shell: pwsh
+        env:
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
         run: |
-          $bundle = Get-ChildItem 'payload/*.msixbundle' -File
-          if (-not $bundle) { throw 'Store bundle payload was not downloaded.' }
-          $expectedAssets = @(
-            "EchoVisualizer-${{ needs.resolve-release.outputs.version }}-msixbundle.msixbundle"
-          )
-          foreach ($expected in $expectedAssets) {
-            if ($bundle.Name -notmatch [regex]::Escape($expected.Substring(0, [Math]::Min(30, $expected.Length)))) {
-              throw "Downloaded bundle '$($bundle.Name)' does not match expected release artifact."
-            }
+          # R5/R7/R8: recompute the hash of the exact downloaded bundle and
+          # require it to match the manifest record and the SHA256SUMS.txt pair
+          # before any Store mutation.
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
+          $bundle = @(Get-ChildItem 'payload/*.msixbundle' -File)
+          if ($bundle.Count -ne 1) { throw 'Expected exactly one Store bundle payload.' }
+          $actualHash = (Get-FileHash -LiteralPath $bundle[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sumsText = Get-Content -LiteralPath 'payload/SHA256SUMS.txt' -Raw
+          $null = Test-EchoChecksumPair -ChecksumsContent $sumsText -FileName $bundle[0].Name -ActualSha256 $actualHash
+
+          $manifest = @(Get-ChildItem 'payload/*release-manifest.json' -File)
+          if ($manifest.Count -ne 1) { throw 'Expected exactly one release manifest payload.' }
+          $manifestDoc = Get-Content -LiteralPath $manifest[0].FullName -Raw | ConvertFrom-Json
+          $storeAssets = @($manifestDoc.assets | Where-Object { $_.mediaRole -eq 'store-bundle' })
+          $bundleRecord = $storeAssets | Where-Object { $_.filename -eq $bundle[0].Name }
+          if (-not $bundleRecord) {
+            throw "Release manifest does not record '$($bundle[0].Name)' as a store-bundle asset."
           }
+          if ([string]$bundleRecord.sha256 -cne $actualHash) {
+            throw "Downloaded bundle hash $actualHash does not match the release manifest record."
+          }
+          if ([long]$bundleRecord.sizeBytes -ne $bundle[0].Length) {
+            throw "Downloaded bundle size does not match the release manifest record."
+          }
+          Write-Host "Payload bundle verified against manifest and exact checksum pair."
 
       - name: Install Pinned Store CLI
         shell: pwsh
@@ -200,6 +229,7 @@ jobs:
           $report = [ordered]@{
             release = '${{ needs.resolve-release.outputs.tag_name }}'
             version = '${{ needs.resolve-release.outputs.version }}'
+            tagSha = '${{ needs.resolve-release.outputs.tag_sha }}'
             productId = $config.store.productId
             packageFamilyName = $config.store.packageFamilyName
             status = 'SUBMITTED'

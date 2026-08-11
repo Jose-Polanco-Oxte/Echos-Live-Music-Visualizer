@@ -35,6 +35,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.release_tag }}
           REF_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
           if ($env:EVENT_NAME -eq 'workflow_dispatch') {
             $tagName = $env:INPUT_TAG.Trim()
@@ -50,10 +51,11 @@ jobs:
             throw "Release version components must be between 0 and 65535: $version"
           }
 
-          # Dereference the exact tag commit to guarantee the produced assets
-          # originate from the released source.
-          $sha = (& gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tagName" --jq '.object.sha').Trim()
-          if (-not $sha -or $sha -notmatch '^[0-9a-f]{40}$') {
+          # R3: resolve lightweight AND annotated tags to the real commit object
+          # through the shared provenance module (never a one-level jq lookup).
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
+          $sha = Resolve-EchoTagCommitSha -Repository $env:REPO -Tag $tagName
+          if ($sha -notmatch '^[0-9a-f]{40}$') {
             throw "Unable to dereference release tag $tagName."
           }
 
@@ -70,10 +72,15 @@ jobs:
           REPO: ${{ github.repository }}
           TOKEN: ${{ github.token }}
         run: |
+          # R2: gh api output is captured as one JSON document and parsed into an
+          # array; never a per-element `.items[]` stream piped into ConvertFrom-Json.
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
           $required = @('Lint GitHub Actions Workflows', 'Test, Publish and Validate Distributions')
           $deadline = (Get-Date).AddMinutes(30)
           while ($true) {
-            $runs = gh api "repos/$env:REPO/actions/runs?sha=$env:TAG_SHA&per_page=100" --jq '.workflow_runs[] | {name: .name, status: .status, conclusion: .conclusion, head_sha: .head_sha}' | ConvertFrom-Json
+            $raw = @(Invoke-EchoGitHubCommand -Arguments @('api', "repos/$env:REPO/actions/runs?sha=$env:TAG_SHA&per_page=100", '--jq', '{runs: [.workflow_runs[] | {name: .name, status: .status, conclusion: .conclusion, head_sha: .head_sha}]}'))
+            $document = ConvertTo-EchoJsonDocument -Raw (($raw -join "`n")) -Command "actions/runs?sha=$env:TAG_SHA"
+            $runs = @($document.runs)
             $successCount = 0
             foreach ($jobName in $required) {
               $jobRuns = @($runs | Where-Object { $_.name -eq $jobName -and $_.head_sha -eq $env:TAG_SHA })
@@ -211,46 +218,49 @@ jobs:
           if (-not $dotnet) { $dotnet = "unknown" }
           "dotnet=$dotnet" >> $env:GITHUB_OUTPUT
 
-      - name: Create Draft GitHub Release
-        id: create
+      - name: Detect Existing Release and Decide Action
+        id: detect
         shell: pwsh
+        env:
+          TAG_NAME: ${{ needs.metadata.outputs.tag_name }}
+          TAG_SHA: ${{ needs.metadata.outputs.tag_sha }}
+          REPO: ${{ github.repository }}
         run: |
-          $body = @"
-          ## Echo Live Music Visualizer v${{ needs.metadata.outputs.version }}
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
+          $existing = Get-EchoGitHubReleaseByTag -Repository $env:REPO -Tag $env:TAG_NAME
+          $expected = @(
+            Get-ChildItem 'artifacts/*.zip' -File | ForEach-Object { $_.FullName }
+          )
+          $bundle = @(Get-ChildItem 'artifacts/*.msixbundle' -File)
+          if ($bundle.Count -ne 1) { throw 'Expected exactly one Store bundle asset in release artifacts.' }
+          $expected += $bundle[0].FullName
 
-          High-performance Windows real-time audio visualizer powered by Rust WASAPI DSP and WinUI 3 with Win2D rendering.
+          $expectedAssets = @(
+            Get-ChildItem -Path $expected -File |
+              ForEach-Object {
+                [pscustomobject]@{ name = $_.Name; size = $_.Length }
+              }
+          )
 
-          ### Download Options
-          - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-x64.zip`: standalone x64 build.
-          - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-arm64.zip`: standalone ARM64 build.
-          - Store bundle `EchoVisualizer-${{ needs.metadata.outputs.version }}-msixbundle.msixbundle`: Microsoft Store package (submission managed by CI).
+          $remoteAssets = @()
+          if ($existing) { $remoteAssets = @(Get-EchoReleaseAssetSet -ReleaseInfo $existing) }
 
-          Extract the appropriate archive and launch `EchoVisualizer.exe`. The distribution is self-contained and does not require a separate Windows App Runtime installation.
-          "@
-          $payload = [ordered]@{
-            tag_name = '${{ needs.metadata.outputs.tag_name }}'
-            name = "Echo Visualizer v${{ needs.metadata.outputs.version }}"
-            draft = $true
-            prerelease = $false
-            body = $body
-          }
-          $payloadJson = $payload | ConvertTo-Json -Depth 3
-          $payloadFile = Join-Path $env:RUNNER_TEMP 'release-draft.json'
-          [System.IO.File]::WriteAllText($payloadFile, $payloadJson, (New-Object System.Text.UTF8Encoding($false)))
-          $release = gh api `
-            --method POST `
-            "repos/$env:GITHUB_REPOSITORY/releases" `
-            --input $payloadFile |
-            ConvertFrom-Json
-          if (-not $release.id) { throw 'Draft release was not created.' }
-          "id=$($release.id)" >> $env:GITHUB_OUTPUT
+          $verdict = Test-EchoGitHubReleaseCompatibility `
+            -ReleaseInfo $existing `
+            -ExpectedCommitSha $env:TAG_SHA `
+            -ExpectedAssets $expectedAssets `
+            -ActualAssets $remoteAssets
+
+          if (-not $verdict.Safe) { throw "Release gate failed closed: $($verdict.Reason)" }
+          "action=$($verdict.Action)" >> $env:GITHUB_OUTPUT
+          if ($existing) { "releaseId=$($existing.id)" >> $env:GITHUB_OUTPUT }
 
       - name: Generate Release Manifest and Checksums
         id: generate
         shell: pwsh
         env:
           TAG_SHA: ${{ needs.metadata.outputs.tag_sha }}
-          RELEASE_ID: ${{ steps.create.outputs.id }}
+          RELEASE_ID: ${{ steps.detect.outputs.releaseId }}
         run: |
           $assets = @(
             Get-ChildItem 'artifacts/*.zip' -File |
@@ -265,46 +275,118 @@ jobs:
             -Tag '${{ needs.metadata.outputs.tag_name }}' `
             -SourceCommitSha "$env:TAG_SHA" `
             -AssetPaths $assets `
-            -ReleaseId "$env:RELEASE_ID"
+            -ReleaseId "$env:RELEASE_ID" `
+            -DotnetVersion '${{ steps.toolchain.outputs.dotnet }}'
 
+          # R5: write SHA256SUMS.txt with the exact name -> hash pairs for every
+          # distributable (zips, bundle, manifest) and verify each pair.
+          $checksumLines = @()
           Get-ChildItem 'artifacts/*.zip','artifacts/*.msixbundle',$manifest.Path |
             ForEach-Object {
-              (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + $_.Name
-            } | Sort-Object > artifacts/SHA256SUMS.txt
+              $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              $checksumLines += "$hash  $($_.Name)"
+            }
+          $checksumLines = $checksumLines | Sort-Object
+          Set-Content -LiteralPath 'artifacts/SHA256SUMS.txt' -Value $checksumLines -Encoding ascii
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
+          $sumsText = Get-Content -LiteralPath 'artifacts/SHA256SUMS.txt' -Raw
+          Get-ChildItem 'artifacts/*.zip','artifacts/*.msixbundle',$manifest.Path -File |
+            ForEach-Object {
+              $actualHash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              $null = Test-EchoChecksumPair -ChecksumsContent $sumsText -FileName $_.Name -ActualSha256 $actualHash
+            }
           Get-Content artifacts/SHA256SUMS.txt
           "manifestPath=$($manifest.Path)" >> $env:GITHUB_OUTPUT
 
+      - name: Create Draft or Reuse Targeted Draft
+        id: create
+        shell: pwsh
+        env:
+          ACTION: ${{ steps.detect.outputs.action }}
+          RELEASE_ID: ${{ steps.detect.outputs.releaseId }}
+          TAG_NAME: ${{ needs.metadata.outputs.tag_name }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          $body = @"
+          ## Echo Live Music Visualizer v${{ needs.metadata.outputs.version }}
+
+          High-performance Windows real-time audio visualizer powered by Rust WASAPI DSP and WinUI 3 with Win2D rendering.
+
+          ### Download Options
+          - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-x64.zip`: standalone x64 build.
+          - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-arm64.zip`: standalone ARM64 build.
+          - Store bundle `EchoVisualizer-${{ needs.metadata.outputs.version }}-msixbundle.msixbundle`: Microsoft Store package (submission managed by CI).
+
+          Extract the appropriate archive and launch `EchoVisualizer.exe`. The distribution is self-contained and does not require a separate Windows App Runtime installation.
+          "@
+          if ($env:ACTION -eq 'create-draft') {
+            $payload = [ordered]@{
+              tag_name = $env:TAG_NAME
+              name = "Echo Visualizer v$env:VERSION"
+              draft = $true
+              prerelease = $false
+              body = $body
+            }
+            $payloadJson = $payload | ConvertTo-Json -Depth 3
+            $payloadFile = Join-Path $env:RUNNER_TEMP 'release-draft.json'
+            [System.IO.File]::WriteAllText($payloadFile, $payloadJson, (New-Object System.Text.UTF8Encoding($false)))
+            $release = gh api `
+              --method POST `
+              "repos/$env:GITHUB_REPOSITORY/releases" `
+              --input $payloadFile
+            if ($LASTEXITCODE -ne 0) { throw 'Draft release was not created.' }
+            $releaseDoc = $release | ConvertFrom-Json
+            "releaseId=$($releaseDoc.id)" >> $env:GITHUB_OUTPUT
+          }
+          else {
+            if (-not $env:RELEASE_ID) { throw 'No release id was resolved for the existing release.' }
+            Write-Host "Reusing existing release $env:RELEASE_ID (no-op for an exact compatible release)."
+            "releaseId=$env:RELEASE_ID" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Upload Release Assets
+        if: ${{ steps.detect.outputs.action == 'create-draft' }}
         shell: pwsh
         run: |
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
           $uploadAssets = @(
             Get-ChildItem 'artifacts/*.zip','artifacts/*.msixbundle','artifacts/SHA256SUMS.txt' -File
           )
           $uploadAssets += Get-Item '${{ steps.generate.outputs.manifestPath }}'
           foreach ($asset in $uploadAssets) {
-            gh release upload '${{ needs.metadata.outputs.tag_name }}' $asset.FullName --clobber
+            gh release upload '${{ needs.metadata.outputs.tag_name }}' $asset.FullName
             if ($LASTEXITCODE -ne 0) {
               throw "Failed to upload release asset: $($asset.Name)"
             }
           }
 
       - name: Verify Release Assets and Publish Stable
+        if: ${{ steps.detect.outputs.action == 'create-draft' }}
         shell: pwsh
+        env:
+          RELEASE_ID: ${{ steps.create.outputs.releaseId }}
+          TAG_NAME: ${{ needs.metadata.outputs.tag_name }}
+          REPO: ${{ github.repository }}
         run: |
+          # R2/R5/R7: fetch the release as a single JSON document and compare the
+          # exact asset set (name + size) against the locally validated payload.
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
+          $raw = @(Invoke-EchoGitHubCommand -Arguments @('api', "repos/$env:REPO/releases/$env:RELEASE_ID"))
+          $doc = ConvertTo-EchoJsonDocument -Raw (($raw -join "`n")) -Command "releases/$env:RELEASE_ID"
           $expected = @(
-            'EchoVisualizer-${{ needs.metadata.outputs.version }}-win-x64.zip',
-            'EchoVisualizer-${{ needs.metadata.outputs.version }}-win-arm64.zip',
-            'EchoVisualizer-${{ needs.metadata.outputs.version }}-msixbundle.msixbundle',
-            'SHA256SUMS.txt',
-            'EchoVisualizer-${{ needs.metadata.outputs.version }}-release-manifest.json'
+            Get-ChildItem 'artifacts/*.zip','artifacts/*.msixbundle','artifacts/SHA256SUMS.txt' -File |
+              ForEach-Object { [pscustomobject]@{ name = $_.Name; size = $_.Length } }
           )
-          $published = gh api "repos/$env:GITHUB_REPOSITORY/releases/${{ steps.create.outputs.id }}" --jq '.assets[] | .name' | ConvertFrom-Json
-          foreach ($name in $expected) {
-            if ($published -notcontains $name) {
-              throw "Release asset is missing after upload: $name"
-            }
-          }
-          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/${{ steps.create.outputs.id }}" -f draft=false -f prerelease=false | Out-Null
+          $expected += [pscustomobject]@{ name = (Split-Path '${{ steps.generate.outputs.manifestPath }}' -Leaf); size = (Get-Item '${{ steps.generate.outputs.manifestPath }}').Length }
+          $expectedAssets = @($expected)
+          $remoteAssets = @(Get-EchoReleaseAssetSet -ReleaseInfo $doc)
+          $verdict = Test-EchoGitHubReleaseCompatibility `
+            -ReleaseInfo $doc `
+            -ExpectedCommitSha '${{ needs.metadata.outputs.tag_sha }}' `
+            -ExpectedAssets $expectedAssets `
+            -ActualAssets $remoteAssets
+          if (-not $verdict.Safe) { throw "Post-upload release verification failed: $($verdict.Reason)" }
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID" -f draft=false -f prerelease=false | Out-Null
 
       - name: Attest Release Artifacts
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3

@@ -17,7 +17,7 @@ concurrency:
 jobs:
   lint-workflows:
     name: Lint GitHub Actions Workflows
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
@@ -49,16 +49,27 @@ jobs:
         shell: pwsh
         run: |
           $configJson = ./scripts/Test-ProductConfiguration.ps1 -AsJson | ConvertFrom-Json
+          # Packing base is a schema-1 normative constant enforced by the parser
+          # (D6) and icon sizes are validated structurally by the regression
+          # harness; both are intentionally excluded from this grep audit.
+          # Arbitrary numeric substrings would be collision-prone here.
           $literals = @(
             @{ Label = 'store.productId'; Value = [string]$configJson.store.productId },
             @{ Label = 'store.packageFamilyName'; Value = [string]$configJson.store.packageFamilyName },
+            @{ Label = 'store.capabilities'; Value = [string]($configJson.store.capabilities | ForEach-Object { $_.name }) -join ',' },
+            @{ Label = 'store.architectures'; Value = [string]($configJson.store.architectures | ForEach-Object { $_.runtimeIdentifier }) -join ',' },
             @{ Label = 'tooling.msstore.version'; Value = [string]$configJson.tooling.msstore.version },
             @{ Label = 'tooling.msstore.assetName'; Value = [string]$configJson.tooling.msstore.assetName },
             @{ Label = 'tooling.msstore.sha256'; Value = [string]$configJson.tooling.msstore.sha256 }
           ) | Where-Object { $_.Value }
+          # The artifact type appears structurally as a glob in workflows
+          # (*.msixbundle) so it is only scanned in operational scripts.
+          $artifactTypeLiteral = @{ Label = 'store.artifactType'; Value = [string]$configJson.store.artifactType }
           # Operational code paths that must consume configuration rather than
           # hard-code it: product scripts (excluding the shared module, which
-          # defines the schema), workflows and composite actions.
+          # defines the schema), workflows and composite actions. Comment-only
+          # lines are documentation, not active duplication; matching uses word
+          # boundaries so short values inside hashes/versions do not count.
           $targets = @()
           $targets += Get-ChildItem 'scripts' -Recurse -File -Include *.ps1 -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -notmatch 'modules\\' }
@@ -66,10 +77,24 @@ jobs:
           $violations = @()
           foreach ($file in $targets) {
             $rel = $file.FullName.Replace((Get-Location).Path + '\', '')
-            foreach ($entry in $literals) {
-              $found = Select-String -LiteralPath $file.FullName -SimpleMatch -Pattern $entry.Value -ErrorAction SilentlyContinue
-              foreach ($match in $found) {
-                $violations += ("$($entry.Label)='$($entry.Value)' at $rel`:$($match.LineNumber)")
+            $lineNumber = 0
+            foreach ($line in Get-Content -LiteralPath $file.FullName) {
+              $lineNumber++
+              $trimmed = $line.TrimStart()
+              if ($trimmed.StartsWith('#') -or $trimmed.StartsWith('<!--') -or $trimmed.StartsWith('//')) { continue }
+              foreach ($entry in $literals) {
+                foreach ($singleValue in @($entry.Value -split ',')) {
+                  $pattern = '(?<![\w])' + [regex]::Escape($singleValue) + '(?![\w])'
+                  if ([regex]::IsMatch($line, $pattern)) {
+                    $violations += ("$($entry.Label)='$singleValue' at $rel`:$lineNumber")
+                  }
+                }
+              }
+              if ($file.Extension -eq '.ps1') {
+                $pattern = '(?<![\w.])' + [regex]::Escape($artifactTypeLiteral.Value) + '(?![\w])'
+                if ([regex]::IsMatch($line, $pattern)) {
+                  $violations += ("$($artifactTypeLiteral.Label)='$($artifactTypeLiteral.Value)' at $rel`:$lineNumber")
+                }
               }
             }
           }
@@ -82,7 +107,7 @@ jobs:
 
   verify:
     name: Test, Publish and Validate Distributions
-    runs-on: windows-latest
+    runs-on: windows-2025
 
     steps:
       - name: Checkout Code
