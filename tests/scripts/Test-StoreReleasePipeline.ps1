@@ -38,14 +38,20 @@ function Assert-Throws {
         [Parameter(Mandatory)][string]$Contains,
         [Parameter(Mandatory)][string]$Message
     )
+    $fired = $false
+    $failureText = $null
     try {
         & $Test | Out-Null
-        throw "FAIL: $Message (expected an exception containing '$Contains')"
     }
     catch {
-        if ($_.Exception.Message -notmatch $Contains) {
-            throw "FAIL: $Message (exception did not match '$Contains': $($_.Exception.Message))"
-        }
+        $fired = $true
+        $failureText = $_.Exception.Message
+    }
+    if (-not $fired) {
+        throw "FAIL: $Message (expected an exception containing '$Contains' but none was thrown)"
+    }
+    if ($failureText -notmatch $Contains) {
+        throw "FAIL: $Message (exception did not match '$Contains': $failureText)"
     }
 }
 

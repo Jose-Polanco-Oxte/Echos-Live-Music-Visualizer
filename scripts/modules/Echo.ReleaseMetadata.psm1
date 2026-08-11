@@ -167,6 +167,14 @@ function Resolve-RequiredPropertyValue {
     return $knownNames
 }
 
+# Item types that may legitimately appear in a MSBuild graph that imports
+# Product.props but are not part of the distribution schema contract. These are
+# documented exceptions (R14/C9): they are ignored for configuration purposes
+# but each required distribution group is still validated for presence.
+$script:AllowedNonSchemaItems = @(
+    'PackageReference', 'Content', 'None', 'AppxManifest', 'Compile', 'Page', 'ProjectReference'
+)
+
 function Resolve-RequiredItemValues {
     param([Parameter(Mandatory)][xml]$Document)
 
@@ -177,28 +185,55 @@ function Resolve-RequiredItemValues {
     }
     foreach ($group in $project.ItemGroup) {
         foreach ($child in $group.ChildNodes) {
-if ($child.NodeType -ne [System.Xml.XmlNodeType]::Element) { continue }
+            if ($child.NodeType -ne [System.Xml.XmlNodeType]::Element) { continue }
             if ($script:RequiredItemGroups.Keys -notcontains $child.Name) {
-                if ($child.Name -match '^(PackageReference|Content|None|AppxManifest|Compile|Page|ProjectReference)$') {
+                if ($child.Name -in $script:AllowedNonSchemaItems) {
                     continue
                 }
-                # Unknown item groups are tolerated only if they are not part of
-                # the distribution schema contract; distribution-relevant items are
-                # the five groups above and their exact members are validated later.
-                continue
-            }
-            $metadata = @{}
-            foreach ($member in $child.ChildNodes) {
-                if ($member.NodeType -ne [System.Xml.XmlNodeType]::Element) { continue }
-                $metadata[$member.Name] = $member.InnerText
+                throw "Unknown Echo item type '$($child.Name)' is not part of the distribution schema and is not a documented MSBuild exception."
             }
             $itemValues[$child.Name] += [pscustomobject]@{
-                Include   = $child.Attributes['Include'].Value
-                Metadata  = $metadata
+                Include = $child.Attributes['Include'].Value
+                Metadata = (Get-ItemMetadataMap -Item $child -GroupName $child.Name)
             }
         }
     }
     return $itemValues
+}
+
+# Validates item metadata strictly against the schema: rejects unknown metadata
+# keys, missing/invalid values and duplicate keys within the same item.
+function Get-ItemMetadataMap {
+    param(
+        [Parameter(Mandatory)][System.Xml.XmlElement]$Item,
+        [Parameter(Mandatory)][string]$GroupName
+    )
+
+    $definition = $script:RequiredItemGroups[$GroupName]
+    if (-not $definition) {
+        throw "No schema definition for item group '$GroupName'."
+    }
+    $knownKeys = @($definition.RequiredMetadata.Keys)
+
+    $metadata = @{}
+    foreach ($member in $Item.ChildNodes) {
+        if ($member.NodeType -ne [System.Xml.XmlNodeType]::Element) { continue }
+        if ($member.Name -notin $knownKeys) {
+            throw "Item '$($Item.Attributes['Include'].Value)' in group '$GroupName' contains metadata '$($member.Name)' which is not part of the schema."
+        }
+        if ($metadata.ContainsKey($member.Name)) {
+            throw "Item '$($Item.Attributes['Include'].Value)' in group '$GroupName' repeats metadata '$($member.Name)'."
+        }
+        $metadata[$member.Name] = $member.InnerText
+    }
+
+    # Required metadata that is declared but missing must fail.
+    foreach ($key in $knownKeys) {
+        if ($definition.RequiredMetadata[$key].Required -and -not $metadata.ContainsKey($key)) {
+            throw "Item '$($Item.Attributes['Include'].Value)' in group '$GroupName' is missing required metadata '$key'."
+        }
+    }
+    return $metadata
 }
 
 function Format-MetadataError {
@@ -208,6 +243,45 @@ function Format-MetadataError {
         [string]$Extra = ''
     )
     return "Invalid $GroupName item '$ItemName'$Extra"
+}
+
+function Parse-PositiveIntValue {
+    param(
+        [Parameter(Mandatory)][string]$Value,
+        [Parameter(Mandatory)][string]$Label
+    )
+    if ($Value -notmatch '^\d+$' -or [int]$Value -le 0) {
+        throw "$Label must be a positive integer; found '$Value'."
+    }
+    return [int]$Value
+}
+
+function Parse-PositiveIntList {
+    param(
+        [Parameter(Mandatory)][string]$Value,
+        [Parameter(Mandatory)][string]$Label
+    )
+    $items = @($Value -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    foreach ($item in $items) {
+        if ($item -notmatch '^\d+$' -or [int]$item -le 0) {
+            throw "$Label must be a semicolon-delimited positive integer list; found '$Value'."
+        }
+    }
+    if ($items.Count -eq 0 -or (@($items | Sort-Object -Unique).Count -ne $items.Count)) {
+        throw "$Label must contain unique positive integers; found '$Value'."
+    }
+    return @($items | ForEach-Object { [int]$_ })
+}
+
+function Parse-StrictBool {
+    param(
+        [Parameter(Mandatory)][string]$Value,
+        [Parameter(Mandatory)][string]$Label
+    )
+    if ($Value -cne 'true' -and $Value -cne 'false') {
+        throw "$Label must be exactly 'true' or 'false'; found '$Value'."
+    }
+    return ($Value -ceq 'true')
 }
 
 function Test-ValidColor {
@@ -269,6 +343,15 @@ $moduleDir = Split-Path -Parent $PSScriptRoot
 
     # --- items ---
     $itemValues = Resolve-RequiredItemValues -Document $document
+
+    # R14/C9: every required item group must be present (>= 1 item); absence of a
+    # required group is a schema violation, not an implicit empty list.
+    foreach ($groupEntry in $script:RequiredItemGroups.GetEnumerator()) {
+        $groupName = $groupEntry.Key
+        if ($groupEntry.Value.Required -and $itemValues[$groupName].Count -eq 0) {
+            throw "Required Echo item group '$groupName' is missing from the distribution configuration."
+        }
+    }
 
     # Read every declared schema property.
     $propertyFactory = {
@@ -371,6 +454,8 @@ $moduleDir = Split-Path -Parent $PSScriptRoot
     $architectures = @()
     $archValues = $itemValues['EchoStoreArchitecture']
     if ($archValues.Count -eq 0) { throw 'Product.props must declare at least one EchoStoreArchitecture item.' }
+    $seenIncludes = @{}
+    $seenArchitectures = @{}
     foreach ($group in $archValues) {
         $ord = $group.Include
         $rid = $group.Metadata['RuntimeIdentifier']
@@ -382,6 +467,21 @@ $moduleDir = Split-Path -Parent $PSScriptRoot
         if ($arch -notin @('x64', 'arm64')) {
             throw (Format-MetadataError -GroupName 'EchoStoreArchitecture' -ItemName $ord -Extra " has unsupported ProcessorArchitecture '$arch'.")
         }
+        if (-not $rid -match '^win-(x64|arm64)$') {
+            throw (Format-MetadataError -GroupName 'EchoStoreArchitecture' -ItemName $ord -Extra " has unsupported RuntimeIdentifier '$rid'.")
+        }
+        $expectedRust = if ($rid -eq 'win-x64') { 'x86_64-pc-windows-msvc' } else { 'aarch64-pc-windows-msvc' }
+        if ($rust -cne $expectedRust) {
+            throw (Format-MetadataError -GroupName 'EchoStoreArchitecture' -ItemName $ord -Extra " RustTarget '$rust' does not match RuntimeIdentifier '$rid'.")
+        }
+        if ($seenIncludes.ContainsKey($ord)) {
+            throw (Format-MetadataError -GroupName 'EchoStoreArchitecture' -ItemName $ord -Extra ' is duplicated.')
+        }
+        if ($seenArchitectures.ContainsKey($arch)) {
+            throw (Format-MetadataError -GroupName 'EchoStoreArchitecture' -ItemName $ord -Extra " declares duplicate architecture '$arch'.")
+        }
+        $seenIncludes[$ord] = $true
+        $seenArchitectures[$arch] = $true
         $architectures += [pscustomobject]@{
             Include = $ord
             RuntimeIdentifier = $rid
@@ -399,10 +499,21 @@ $uniqueArches = @($architectures | ForEach-Object { $_.ProcessorArchitecture })
 
     # --- capabilities ---
     $capabilities = @()
+    $seenCapabilities = @{}
     foreach ($group in $itemValues['EchoStoreCapability']) {
         $name = $group.Include
+        if ($name -notmatch '^[A-Za-z][A-Za-z0-9_]*$') {
+            throw "EchoStoreCapability item '$name' is not a valid capability name."
+        }
         $element = $group.Metadata['ManifestElement']
         if (-not $element) { throw "EchoStoreCapability item '$name' is missing ManifestElement metadata." }
+        if ($element -notin @('rescap:Capability', 'DeviceCapability')) {
+            throw "EchoStoreCapability item '$name' has unsupported ManifestElement '$element'."
+        }
+        if ($seenCapabilities.ContainsKey($name)) {
+            throw "EchoStoreCapability item '$name' is duplicated."
+        }
+        $seenCapabilities[$name] = $true
         $capabilities += [pscustomobject]@{ Name = $name; ManifestElement = $element }
     }
 
@@ -410,21 +521,26 @@ $uniqueArches = @($architectures | ForEach-Object { $_.ProcessorArchitecture })
     $brandAssets = @(
         foreach ($group in $itemValues['EchoBrandAsset']) {
             $meta = $group.Metadata
+            $width = Parse-PositiveIntValue $meta['Width'] "'$($group.Include)' Width"
+            $height = Parse-PositiveIntValue $meta['Height'] "'$($group.Include)' Height"
+            $scales = Parse-PositiveIntList $meta['Scales'] "'$($group.Include)' Scales"
             [pscustomobject]@{
                 File   = $group.Include
-                Width  = [int]$meta['Width']
-                Height = [int]$meta['Height']
-                Scales = @($meta['Scales'] -split ';' | ForEach-Object { [int]$_.Trim() })
+                Width  = $width
+                Height = $height
+                Scales = $scales
             }
         }
     )
     $targetSizeAssets = @(
         foreach ($group in $itemValues['EchoBrandTargetSizeAsset']) {
             $meta = $group.Metadata
+            $sizes = Parse-PositiveIntList $meta['Sizes'] "'$($group.Include)' Sizes"
+            $unplated = Parse-StrictBool $meta['IncludeUnplated'] "'$($group.Include)' IncludeUnplated"
             [pscustomobject]@{
                 FileStem       = $group.Include
-                Sizes          = @($meta['Sizes'] -split ';' | ForEach-Object { [int]$_.Trim() })
-                IncludeUnplated = [bool]($meta['IncludeUnplated'] -eq 'true')
+                Sizes          = $sizes
+                IncludeUnplated = $unplated
             }
         }
     )
@@ -433,7 +549,14 @@ $uniqueArches = @($architectures | ForEach-Object { $_.ProcessorArchitecture })
     $requiredSecrets = @(); $optionalSecrets = @()
     foreach ($group in $itemValues['EchoExternalBinding']) {
         $name = $group.Include
-        $isRequired = [bool]($group.Metadata['Required'] -eq 'true')
+        $kind = $group.Metadata['Kind']
+        $scope = $group.Metadata['Scope']
+        if ($kind -ne 'Secret') { throw "EchoExternalBinding '$name' must use Kind=Secret." }
+        if ($scope -ne 'Environment') { throw "EchoExternalBinding '$name' must use Scope=Environment." }
+        $isRequired = Parse-StrictBool $group.Metadata['Required'] "'$name' Required"
+        if ([string]::IsNullOrWhiteSpace($group.Metadata['Purpose'])) {
+            throw "EchoExternalBinding '$name' is missing its Purpose metadata."
+        }
         $binding = [pscustomobject]@{ Name = $name; Purpose = $group.Metadata['Purpose'] }
         if ($isRequired) { $requiredSecrets += $binding } else { $optionalSecrets += $binding }
     }

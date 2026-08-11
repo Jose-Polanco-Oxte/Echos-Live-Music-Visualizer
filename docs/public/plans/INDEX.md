@@ -5,7 +5,9 @@ checkpoints, validation evidence, and handoff information live in each plan.
 
 ## Active
 
-None.
+| Plan ID | Title | Status | Area | Updated | Current step | Plan |
+|---|---|---|---|---|---|---|
+| `PLAN-20260811-RELEASE-CD-HARDENING` | Endurecimiento y corrección del release CI/CD de Microsoft Store | `READY` | CI/CD, distribución y procedencia | 2026-08-11 | Milestone 1 — baseline y pruebas de regresión | [Active plan](active/2026-08-11--microsoft-store-release-cd-hardening.md) |
 
 ## Blocked / Replanning
 

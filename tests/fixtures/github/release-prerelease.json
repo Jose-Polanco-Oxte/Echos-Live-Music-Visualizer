@@ -1,0 +1,10 @@
+{
+  "url": "https://api.github.com/repos/example/repo/releases/103",
+  "id": 103,
+  "tag_name": "v0.2.0.19",
+  "name": "Echo Visualizer v0.2.0.19",
+  "draft": false,
+  "prerelease": true,
+  "target_commitish": "3333333333333333333333333333333333333333",
+  "assets": []
+}
