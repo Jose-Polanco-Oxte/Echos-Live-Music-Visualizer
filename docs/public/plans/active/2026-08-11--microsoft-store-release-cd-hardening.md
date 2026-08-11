@@ -3,7 +3,7 @@
 ## Current State Snapshot
 
 - **Plan ID:** `PLAN-20260811-RELEASE-CD-HARDENING`
-- **Status:** `IN_PROGRESS`
+- **Status:** `PLAN_EXECUTED` (offline implementation scope complete and conforming; live Store gates remain external operator steps outside this plan's scope)
 - **Verification state:** `STALE` (implementation mutated modules/scripts since CP-002; CP-003 will revalidate)
 - **Created:** 2026-08-11
 - **Last updated:** 2026-08-11
@@ -839,25 +839,25 @@ sin afirmar que Partner Center fue publicado.
 
 | Requirement | Implementation | Validation | State | Evidence |
 |---|---|---|---|---|
-| R1 | Step 1 | V1 | PENDING | — |
-| R2 | Step 4 / C1 | V2, V8 | PENDING | — |
-| R3 | Step 4 / C1–C3 | V8 | PENDING | — |
-| R4 | Step 4 / C2–C3 | V8 | PENDING | — |
-| R5 | Step 4 / C2, C6, C7 | V8, V10 | PENDING | — |
-| R6 | Step 3 / C4 | V2, V5 | PENDING | — |
-| R7 | Step 4 / C6–C7 | V10 | PENDING | — |
-| R8 | Step 4 / C3 | V8 | PENDING | — |
-| R9 | Step 3 / C5 | V6 | PENDING | — |
-| R10 | Step 3 / C5 | V6 | PENDING | — |
-| R11 | Step 3 / C5 | V7 | PENDING | — |
-| R12 | Step 3 / C5 | V6 | PENDING | — |
-| R13 | Step 2 / C6–C8 | V3, V4, V10 | PENDING | — |
-| R14 | Step 2 / C9 | V3 | PENDING | — |
-| R15 | Step 1 / C10 | V5–V8 | PENDING | — |
-| R16 | Step 4 / C11 | V9 | PENDING | — |
-| R17 | Step 5 / C12 | V12 | PENDING | — |
-| R18 | Steps 3–6 | V1, V7, V12 | PENDING | — |
-| R19 | All steps | V10–V12 | PENDING | — |
+| R1 | Step 1 | V1 | VERIFIED | `91eebe9` ancestor of HEAD; `.agents/` present; branch `ci/release-cd-hardening` |
+| R2 | Step 4 / C1 | V2, V8 | VERIFIED | `Echo.GitHubRelease.psm1` `ConvertTo-EchoJsonDocument`; NDJSON rejection fixture; workflows no `.items[]`→ConvertFrom-Json (audit) |
+| R3 | Step 4 / C1–C3 | V8 | VERIFIED | `Resolve-EchoTagCommitSha` lightweight+annotated fixtures; workflow checkout of real SHA |
+| R4 | Step 4 / C2–C3 | V8 | VERIFIED | `Test-EchoGitHubReleaseCompatibility` no-op/conflict/draft/prerelease fixtures; idempotent release.yml |
+| R5 | Step 4 / C2, C6, C7 | V8, V10 | VERIFIED | `Test-EchoChecksumPair` exact-name fixtures; payload hash recomputed vs manifest+checksum pair |
+| R6 | Step 3 / C4 | V2, V5 | VERIFIED | installer parses (0 errors); `$expectedVersion:` fixed; publisher-checksum hard error; `--version` smoke |
+| R7 | Step 4 / C6–C7 | V10 | VERIFIED | manifest round-trip + schema; artifact validator correlates bundle vs manifest record/hash/size |
+| R8 | Step 3 / C3 | V8 | VERIFIED | store-publish resolves same tag→SHA and checks out that SHA in consuming jobs; no `target_commitish` authority |
+| R9 | Step 3 / C5 | V6 | VERIFIED | `Get-EchoStoreSubmissionState` separates state/version/package; NoSubmission/PendingCommit/active/terminal fixtures |
+| R10 | Step 3 / C5 | V6 | VERIFIED | `Test-EchoStoreStateSafeToProceed` correlation fixtures (version/package/hash) |
+| R11 | Step 3 / C5 | V7 | VERIFIED | retry classification fixtures (429/5xx vs auth/validation); cap/backoff; redaction |
+| R12 | Step 3 / C5 | V6 | VERIFIED | `delete-target-draft` guarded by explicit input + exact version/package match |
+| R13 | Step 2 / C6–C8 | V3, V4, V10 | VERIFIED | Build-Distributions/`New-EchoReleaseManifest`/`Test-StoreReleaseArtifact` derive from config; literal audit PASS; icon/capability/architecture from config |
+| R14 | Step 2 / C9 | V3 | VERIFIED | strict parser fixtures (unknown item/metadata, missing group, duplicate arch, invalid capability, bool/scale/width) all fail closed |
+| R15 | Step 1 / C10 | V5–V8 | VERIFIED | `Test-ReleaseHardening.ps1` covers R2-R6, R9-R11, R13, R14 |
+| R16 | Step 4 / C11 | V9 | VERIFIED | actionlint PASS all workflows + composite; setup-dotnet pinned full SHA; Windows runner `windows-2025`; boundary literal audit |
+| R17 | Step 5 / C12 | V12 | VERIFIED | publishing guide/docs/traceability updated; archived R16 row repaired + correction notice; no stale active StoreBroker/branding references |
+| R18 | Steps 3–6 | V1, V7, V12 | VERIFIED | fixtures contain only deterministic test hashes (no secrets); no mutating Store calls in fail-closed paths; live gates operator-gated |
+| R19 | All steps | V10–V12 | VERIFIED | cargo fmt/clippy/test (77) + dotnet test (40) green; no product source changes; only automation/scripts/docs changed |
 
 ### Replan Triggers
 
@@ -890,15 +890,32 @@ sin afirmar que Partner Center fue publicado.
 
 ## Progress
 
-- M1: `IN_PROGRESS`
-- M2: `NOT_STARTED`
-- M3: `NOT_STARTED`
-- M4: `NOT_STARTED`
-- M5: `NOT_STARTED`
-- Current step: Step 1
-- No implementation changes have been made by plan authoring.
+- M1: `DONE`
+- M2: `DONE`
+- M3: `DONE`
+- M4: `DONE`
+- M5: `DONE`
+- Current step: Step 6 (final quality gate) complete
+- All six steps implemented and validated offline; external operator gates remain separate.
 
 ## Checkpoint Ledger
+
+### CP-004 — 2026-08-11 (final)
+
+- **Plan status:** `COMPLETED` (offline implementation scope)
+- **Verification state:** `VERIFIED`
+- **Active milestone:** M5
+- **Active step:** Step 6 (final quality gate)
+- **Repository revision:** `ci/release-cd-hardening` (commits `7f0f931`, `700f85a`, `2190183`, `de64492`, plus this plan update)
+- **Working tree:** automation/scripts/docs implemented; user-owned deleted attachment left unchanged
+- **Changes since CP-003:** M4 (release.yml/store-publish.yml hardened on shared module, R16 pins), M5 (docs + traceability + archived-plan correction)
+- **Validation performed:** V1–V12 — parser 0 errors; hardening + pipeline harnesses PASS; actionlint PASS; literal audit PASS; brand check PASS; cargo fmt/clippy/test (77) + dotnet (40) PASS; `git diff --check` PASS; local-link/reference scan PASS; secrets scan PASS
+- **Validation result:** PASS for all offline gates; remaining gates are external operator steps (Partner Center read-only confirmation, first authorized live submission)
+- **Conformance state:** CONFORMING; no deviations
+- **Compliance changes:** R1–R19 → all `VERIFIED` (offline); live external gates documented as operator-gated, never as VERIFIED
+- **Open deviations:** None
+- **Blockers:** None for offline implementation; Partner Center credentials and the first live submission are operator-gated (separate user authorization)
+- **Next exact action:** branch ready for human review; do not push/merge/tag/release; first real Store submission requires the user to authorize a stable release with `microsoft-store-production` secrets configured
 
 ### CP-003 — 2026-08-11
 
@@ -1001,75 +1018,223 @@ Execution must append command/result summaries for V1–V12 here and attach only
 sanitized artifact paths or workflow run identifiers. Full secrets and raw
 credential-bearing logs are prohibited.
 
+### VAL-H01 — GitHub provenance module (R2/R3/R4/R5)
+
+- **Checkpoint:** CP-004
+- **Command:** `powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\scripts\Test-ReleaseHardening.ps1`
+- **Result:** PASS for sections R2 (JSON object/array/NDJSON-rejection), R3 (lightweight+annotated tag), R4 (no-op/conflict/draft/prerelease/create-draft), R5 (exact-name checksum pairs)
+- **Relevant scope:** `Echo.GitHubRelease.psm1`, GitHub/release fixtures, `release.yml`, `store-publish.yml`
+
+### VAL-H02 — Store state adapter (R9/R10/R11/R12)
+
+- **Checkpoint:** CP-004
+- **Command:** same harness (sections R9/R10/R11) + `Test-StoreReleasePipeline.ps1`
+- **Result:** PASS for state separation, pending correlation, retry classification (429/5xx vs auth/validation), secret redaction; both harnesses green
+- **Relevant scope:** `Echo.StoreSubmission.psm1`, store state fixtures, `Invoke-MicrosoftStoreRelease.ps1`, `Get-MicrosoftStoreReleaseStatus.ps1`
+
+### VAL-H03 — Config parser & centralization (R13/R14)
+
+- **Checkpoint:** CP-004
+- **Command:** harness R14/R13 + `Test-ProductConfiguration.ps1 -AsJson` + `Generate-BrandAssets.ps1 -Check` + boundary literal audit
+- **Result:** PASS (unknown items/metadata, missing group, duplicate arch, invalid capability all fail closed; projections correct; brand check PASS; literal audit PASS)
+- **Relevant scope:** `Echo.ReleaseMetadata.psm1`, `Build-Distributions.ps1`, `New-EchoReleaseManifest.ps1`, `Test-StoreReleaseArtifact.ps1`
+
+### VAL-H04 — CLI installer (R6)
+
+- **Checkpoint:** CP-004
+- **Command:** full PowerShell parser check on all scripts/modules + harness R6
+- **Result:** 0 parse errors across all scripts/modules; no broken `$expectedVersion:` interpolation remains
+- **Relevant scope:** `Install-MicrosoftStoreCli.ps1`
+
+### VAL-H05 — Workflows and supply chain (R2/R5/R8/R16)
+
+- **Checkpoint:** CP-004
+- **Command:** `actionlint` over all workflows + composite action; static no-`.items[]`→`ConvertFrom-Json` audit; full-SHA pin check incl. composite `setup-dotnet`; pinned `windows-2025` runner
+- **Result:** PASS; literal audit PASS (boundary-aware)
+- **Relevant scope:** `.github/workflows/*.yml`, `.github/actions/setup-windows-build/action.yml`
+
+### VAL-H06 — Product regressions (R19)
+
+- **Checkpoint:** CP-004
+- **Command:** `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / `cargo test` / `dotnet test tests\EchoVisualizer.Tests\... -c Debug -p:Platform=x64`
+- **Result:** PASS — cargo fmt/clippy clean, cargo 77 passed, dotnet 40 passed; no product source behavior changed
+- **Relevant scope:** entire product tree (unchanged)
+
+### VAL-H07 — Documentation coherence (R17)
+
+- **Checkpoint:** CP-004
+- **Command:** `git diff --check`, local-link/reference scan, archived-plan R16 row repair
+- **Result:** PASS — `traceability-report-20260811-release-cd-hardening.md` added; publishing guide updated; no stale active StoreBroker/branding references
+- **Relevant scope:** `docs/public/publishing/microsoft-store.md`, `docs/store/README.md`, archived Store CD plan, traceability
+
+### VAL-H08 — Secrets hygiene (R18)
+
+- **Checkpoint:** CP-004
+- **Command:** secret-pattern scan of changed/added files
+- **Result:** PASS — only deterministic test fixture hashes present (dummy `aaaa…`/`bbbb…` and the public artifact hash `070e7b1d…`); no credentials committed
+
 ## Handoff Snapshot
 
-**Last safe checkpoint:** `CP-001`
+**Last safe checkpoint:** `CP-004` (final)
 
-**Current repository state:** planning artifact authored on `dev` at `6a1ed44`;
-audited implementation remains on `ci/microsoft-store-release-cd` at `91eebe9`.
+**Current repository state:** implementada sobre `ci/release-cd-hardening`
+(descendiente de `91eebe9`), commits `7f0f931`, `700f85a`, `2190183`,
+`de64492` y la actualización del plan. Todos los gates offline V1–V12 VERIFIED.
+No empujada ni fusionada.
 
-**Completed:** plan discovery, audit reconciliation, scope, decisions,
-requirements, change map, validation contract and initial checkpoint.
+**Completed:** all six steps — M1 (fixtures/seams), M2 (config parser +
+centralization), M3 (CLI installer + Store state adapter), M4 (release +
+Store workflows on shared provenance module), M5 (documentation + prior-plan
+evidence), M5 final quality gate.
 
-**In progress:** none; authoring ends at `READY`.
+**In progress:** none (offline implementation complete).
 
-**Next exact action:** switch to or create an execution branch descended from
-`91eebe9`, verify `.agents/AGENTS.md`, read this plan completely, run Step 1
-baseline and fixtures, then proceed only if R1 holds.
+**Next exact action:** branch listo para revisión humana. No push/merge/tag/
+release. La primera submission real Store requiere que el usuario autorice una
+release estable nueva con los secrets de `microsoft-store-production`
+configurados y la confirmación read-only de Partner Center.
 
-**Do not repeat:** do not treat the previous plan's local build, Rust/.NET
-tests or actionlint PASS as evidence that release JSON parsing, Store preflight
-or live Partner Center behavior works.
+**Do not repeat:** no tratar los gates offline (build/Rust/.NET/actionlint/
+fixtures) como prueba de la API externa de Partner Center ni de una submission
+live; esos siguen siendo pasos operator-gated separados.
 
-**Pending validation:** all V1–V12; external Partner Center read-only status and
-first authorized stable release remain outside offline execution.
+**Pending validation:** confirmación read-only de Partner Center y la primera
+submission autorizada (both operator-gated; fuera del alcance offline).
 
-**Open discoveries:** `DISC-001`, `DISC-002`.
+**Open discoveries:** `DISC-001`, `DISC-002` (resueltas en ejecución).
 
-**Open decisions:** none beyond D1–D7.
+**Open decisions:** none beyond D1–D7 (all preserved/locked).
 
 **Open deviations:** none.
 
-**Known blockers:** target branch integration and external operator gates.
+**Known blockers:** none for offline implementation; external operator gates
+(Partner Center credenciales y primera submission) requieren autorización
+directa del usuario.
 
-**Files currently relevant:** workflows in `.github/workflows/`,
-`scripts/Install-MicrosoftStoreCli.ps1`, `scripts/modules/`, distribution
-scripts, `tests/scripts/`, `build/Product.props`, publishing docs and the
-archived prior plan.
+**Files currently relevant:** `.github/workflows/release.yml`,
+`store-publish.yml`, `ci.yml`; `.github/actions/setup-windows-build/action.yml`;
+`scripts/modules/Echo.GitHubRelease.psm1`, `Echo.StoreSubmission.psm1`,
+`Echo.ReleaseMetadata.psm1`; `scripts/Install-MicrosoftStoreCli.ps1`,
+`Build-Distributions.ps1`, `New-EchoReleaseManifest.ps1`,
+`Test-StoreReleaseArtifact.ps1`, `Invoke-MicrosoftStoreRelease.ps1`,
+`Get-MicrosoftStoreReleaseStatus.ps1`; `tests/scripts/Test-ReleaseHardening.ps1`
+y fixtures; `docs/public/publishing/microsoft-store.md`, `docs/store/README.md`,
+traceability; plan (este archivo) y plan archivado previo.
 
 **Commands needed to resume verification:**
 
 ```powershell
-git fetch --prune
-git status --short --branch
 git merge-base --is-ancestor 91eebe9 HEAD
-Get-Content .agents\AGENTS.md -Raw
-Get-Content docs\public\plans\active\2026-08-11--microsoft-store-release-cd-hardening.md -Raw
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\scripts\Test-ReleaseHardening.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\scripts\Test-StoreReleasePipeline.ps1
+actionlint
+cargo fmt --manifest-path src\core\Cargo.toml -- --check
+cargo clippy --manifest-path src\core\Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path src\core\Cargo.toml
+dotnet test tests\EchoVisualizer.Tests\EchoVisualizer.Tests.csproj --configuration Debug --no-restore -p:Platform=x64
 ```
 
 # Completion
 
 ## Completion Criteria
 
-- [ ] R1–R19 are `VERIFIED` or explicitly marked `BLOCKED` only for external
-      operator gates that are not part of offline implementation.
-- [ ] All modified PowerShell files parse successfully.
-- [ ] All GitHub workflows pass actionlint and the no-line-JSON audit.
-- [ ] GitHub release recovery is idempotent for an exact compatible release and
+- [x] R1–R19 are `VERIFIED`; external operator gates (Partner Center read-only
+      confirmation and first authorized submission) are explicitly separated,
+      not marked as offline VERIFIED.
+- [x] All modified PowerShell files parse successfully (0 errors across all
+      scripts and modules).
+- [x] All GitHub workflows pass actionlint and the no-`.items[]`-JSON audit.
+- [x] GitHub release recovery is idempotent for an exact compatible release and
       fail-closed for conflicts.
-- [ ] Store preflight, correlation, retry and recovery tests pass.
-- [ ] Store bundle, manifest, checksum and central configuration validation pass.
-- [ ] Rust/.NET regression gates remain green with no product source changes.
-- [ ] Documentation and the previous plan's evidence are internally coherent.
-- [ ] No secrets/tokens are present in the diff, fixtures or artifacts.
-- [ ] Final checkpoint and Handoff Snapshot are current.
-- [ ] The plan remains non-terminal until explicit execution and final audit are
-      completed; authoring does not authorize publishing.
+- [x] Store preflight, correlation, retry and recovery tests pass.
+- [x] Store bundle, manifest, checksum and central configuration validation pass.
+- [x] Rust/.NET regression gates remain green (cargo 77, dotnet 40) with no
+      product source changes.
+- [x] Documentation and the previous plan's evidence are internally coherent.
+- [x] No secrets/tokens are present in the diff, fixtures or artifacts.
+- [x] Final checkpoint (CP-004) and Handoff Snapshot are current.
 
 ## Outcomes & Retrospective
 
-To be completed during execution. It must state which audit findings were
-resolved, which external gates remain operator-gated, and whether any replan was
-required. It must not claim a live Microsoft Store submission unless the user
-explicitly authorizes it and the evidence is recorded.
+### Delivered
+
+The audit findings from the post-execution review of the Store CD release
+pipeline were corrected:
+
+- **GitHub provenance (R2–R5):** a single shared module
+  (`Echo.GitHubRelease.psm1`) now owns `gh` JSON parsing, lightweight/annotated
+  tag dereference to the real commit, release identity comparison and exact
+  filename→hash checksum validation; both `release.yml` and `store-publish.yml`
+  consume it instead of two divergent inline parsers.
+- **Release idempotency (R4):** publishing reuses an exact stable release as a
+  no-op and fails closed on draft/pre-release/conflicting releases instead of
+  always creating a new draft.
+- **Store state machine (R9–R12):** `CurrentState`, `LatestPublishedVersion` and
+  pending target (version/package/hash) are separated; upload resumes only an
+  exact matching pending commit; 429/5xx are retried with a capped backoff while
+  auth/validation never are; `delete-target-draft` is guarded by an explicit
+  input and exact target correlation; secrets are redacted.
+- **CLI installer (R6):** parser interpolation fixed, publisher-checksum
+  mismatch is a hard error, and `--version` smoke test requires the exact pinned
+  version.
+- **Config centralization (R13/R14):** build/manifest/artifact consumers derive
+  architectures, capabilities, icon sizes and artifact type from `Product.props`;
+  the parser rejects unknown items/metadata, missing groups, duplicate
+  architectures and invalid capability names/elements.
+- **Supply chain (R16):** `setup-dotnet` pinned to a full SHA in the composite
+  action, Windows build runner pinned to `windows-2025`, and the CI literal
+  audit extended with boundary-aware matching.
+
+### Validation
+
+All offline gates V1–V12 passed: `Test-ReleaseHardening.ps1` and
+`Test-StoreReleasePipeline.ps1` green; parser 0 errors; actionlint PASS; literal
+audit PASS; `Generate-BrandAssets.ps1 -Check` PASS; cargo fmt/clippy/test (77)
+and dotnet test (40) green; `git diff --check` and reference/secret scans PASS; a
+local Store bundle was re-validated against the regenerated manifest.
+
+### Differences from original plan
+
+- The icon-size and packing-base literals were dropped from the executable
+  literal-diff audit because they are schema-constant/structural values that
+  produced false positives; icon sizes are instead validated structurally by the
+  regression harness (`Test-ReleaseHardening.ps1`, R13) and the packing base by
+  the parser. This is an executor-discretion refinement of V4, not a scope
+  change.
+- `delete-target-draft` recovery is additionally correlated by bundle name/hash,
+  beyond the plan's version requirement, to satisfy R12's "exact target" intent.
+- No replanning was required; all work was covered by D1–D7 and the validation
+  contract.
+
+### Important discoveries
+
+- The previously archived plan's compliance matrix contained a malformed R16 row
+  (a stray `|| R1 | …` fragment) and recorded several checkpoints as PASS while
+  the release flow had active defects. This was corrected in the archive with an
+  explicit R17 correction notice chaining to this plan, without rewriting the
+  original partial-execution history.
+- The `Assert-Throws` helper in both harnesses had a latent bug that swallowed a
+  missing-exception as a pass (the failure message itself contained the expected
+  substring); it was fixed so negative fixtures now genuinely fail closed.
+
+### Decisions worth preserving
+
+- D2 (single shared GitHub provenance module), D3 (release identity = tag +
+  commit + version + asset set + hashes), D4 (separate Store state data) and D6
+  (no schema increment without need) were all preserved and validated.
+- Retry classification and secret redaction belong in the adapter layer, not in
+  the workflows.
+
+### Follow-up work
+
+- Operator-gated: authenticated read-only Partner Center confirmation of
+  `9NJMJFH8J616`, and the first live Store submission via an authorized stable
+  release with `microsoft-store-production` secrets configured. These require
+  separate, explicit user authorization and are outside offline implementation.
+
+### Final result
+
+SUCCESS (offline implementation scope). All R1–R19 are locally VERIFIED, the
+external live gates remain operator-gated as designed, and no live Microsoft
+Store submission was performed or claimed.
 
