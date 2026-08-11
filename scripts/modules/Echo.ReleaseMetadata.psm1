@@ -591,6 +591,79 @@ function Get-EchoProductPropsSha256 {
     }
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
+
+function Test-EchoReleaseManifestSchema {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][pscustomobject]$Configuration
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Release manifest is missing: $Path"
+    }
+
+    $manifest = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+
+    $checks = @(
+        @{ Name = 'schemaVersion'; Value = [string]$manifest.schemaVersion },
+        @{ Name = 'product.version'; Value = [string]$manifest.product.version },
+        @{ Name = 'product.coreVersion'; Value = [string]$manifest.product.coreVersion }
+    )
+
+    $requiredStrings = @(
+        'product.name',
+        'product.publisherDisplayName',
+        'product.packageIdentityName',
+        'product.packagePublisher',
+        'product.applicationId',
+        'store.productId',
+        'store.packageFamilyName',
+        'store.artifactType',
+        'store.targetDeviceFamily',
+        'store.privacyPolicyUrl'
+    )
+    foreach ($key in $requiredStrings) {
+        $value = $manifest
+        foreach ($segment in $key.Split('.')) {
+            $value = $value.$segment
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$value)) {
+            throw "Release manifest '$key' is missing or empty."
+        }
+    }
+
+    if ([int]$manifest.schemaVersion -ne 1) {
+        throw "Unsupported release manifest schemaVersion '$($manifest.schemaVersion)'."
+    }
+    if ($manifest.product.version -cne $Configuration.Product.Version) {
+        throw "Release manifest product version '$($manifest.product.version)' does not match configuration '$($Configuration.Product.Version)'."
+    }
+    if ($manifest.store.productId -cne $Configuration.Store.ProductId) {
+        throw "Release manifest product ID mismatch."
+    }
+    if ($manifest.store.packageFamilyName -cne $Configuration.Store.PackageFamilyName) {
+        throw "Release manifest package family name mismatch."
+    }
+
+    $assets = @($manifest.assets)
+    if ($assets.Count -eq 0) {
+        throw "Release manifest must contain at least one distributable asset."
+    }
+    foreach ($asset in $assets) {
+        if ([string]::IsNullOrWhiteSpace([string]$asset.filename)) {
+            throw "Release manifest contains an asset without a filename."
+        }
+        if ([string]$asset.sha256 -notmatch '^[0-9a-f]{64}$') {
+            throw "Release manifest asset '$($asset.filename)' has an invalid lowercase SHA-256."
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$asset.mediaRole)) {
+            throw "Release manifest asset '$($asset.filename)' is missing its media role."
+        }
+    }
+
+    return $manifest
+}
 # ---------------------------------------------------------------------------
 # Public exports (must appear after all function definitions)
 # ---------------------------------------------------------------------------
@@ -601,5 +674,6 @@ Export-ModuleMember -Function @(
     'Compare-EchoVersion',
     'Test-EchoStoreVersionMonotonic',
     'Resolve-EchoReleaseTag',
-    'Get-EchoProductPropsSha256'
+    'Get-EchoProductPropsSha256',
+    'Test-EchoReleaseManifestSchema'
 )

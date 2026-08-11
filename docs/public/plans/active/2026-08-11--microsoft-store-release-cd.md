@@ -1423,7 +1423,7 @@ release, submit to Store or change the D5 mapping without replanning.
 | S1 | `DONE` | Git baseline `VERIFIED` (CP-002); Partner Center confirmation externally `BLOCKED` (no credentials). |
 | S2 | `DONE` | Schema-1 `Product.props`, shared parser, D5 mapping, branding migration, fixtures and tests pass (CP-003). |
 | S3 | `DONE` | x64+ARM64 Store build, deterministic `/bv` bundle and artifact validation pass (CP-004). |
-| S4 | `NOT_STARTED` | Pending S2/S3. |
+| S4 | `DONE` | `release.yml` rewritten: exact-SHA checkout, CI gates, ZIP+Store bundle, manifest/checksums, draft→stable via `gh`, attestation, Store dispatch (CP-005). |
 | S5 | `NOT_STARTED` | Pending S2. |
 | S6 | `NOT_STARTED` | Pending S2–S5 and external secrets. |
 | S7 | `NOT_STARTED` | Pending S5. |
@@ -1431,6 +1431,43 @@ release, submit to Store or change the D5 mapping without replanning.
 | S9 | `NOT_STARTED` | Pending S1–S8. |
 
 ## Checkpoint Ledger
+
+### CP-005 — S4 release orchestration reworked
+
+- **Plan status:** `IN_PROGRESS`.
+- **Verification state:** `VERIFIED` for S2–S4; S1 Partner Center `BLOCKED`.
+- **Execution branch:** `ci/microsoft-store-release-cd`.
+- **Changes since CP-004 (uncommitted at checkpoint):**
+  - `scripts/modules/Echo.ReleaseMetadata.psm1`: added
+    `Test-EchoReleaseManifestSchema` (D6 schema validation).
+  - `scripts/New-EchoReleaseManifest.ps1`: deterministic provenance manifest
+    generator with schema self-validation.
+  - `.github/workflows/release.yml` rewritten (C3/S4): tag dereference to exact
+    SHA, required-CI gate (`Lint GitHub Actions Workflows`,
+    `Test, Publish and Validate Distributions`), exact-SHA checkout with
+    verification, ZIP + Store bundle builds from the same SHA, release
+    manifest/checksums, draft release creation via `gh`, asset verification,
+    draft→stable publication, build provenance attestation, and explicit Store
+    workflow dispatch.
+  - Replaced `softprops/action-gh-release` with GitHub-provided `gh`.
+- **Validation:**
+  - PowerShell parser PASS for the module and manifest script.
+  - Manifest generator round-trip: assets=3, storeVersion=0.2.19.0, correct
+    media roles; schema self-validation PASS.
+  - `actionlint` v1.7.12 (exact pin) PASS over all four workflows and the
+    composite setup action.
+  - All five workflow action SHAs re-resolved against upstream before use
+    (checkout v7, upload v7, download v8, setup-dotnet v6, attest v3).
+- **Compliance changes:** R1/R2/R6/R7/R13 → `PARTIAL`
+  (implementation + static validation; live GitHub execution remains a
+  non-production environment limitation).
+- **Conformance:** `CONFORMING`; naming/recovery-dispatch details are
+  documented LOCAL_VARIATION consistent with D1–D6/D14–D15.
+- **Open deviations:** none.
+- **Next exact action:** S5 — pinned `msstore` CLI installer +
+  `Echo.StoreSubmission.psm1` state machine,
+  `Invoke-MicrosoftStoreRelease.ps1` / `Get-MicrosoftStoreReleaseStatus.ps1`,
+  and remove StoreBroker.
 
 ### CP-004 — S3 deterministic Store bundle and validation complete
 

@@ -6,64 +6,96 @@ on:
       - 'v*.*.*.*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Four-part release version (A.B.C.D)'
+      release_tag:
+        description: 'Existing release tag to recover/publish (vA.B.C.D); the exact tag SHA is used'
         required: true
         type: string
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   metadata:
-    name: Validate Release Metadata
+    name: Resolve Release Metadata
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.release.outputs.version }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.resolve.outputs.version }}
+      tag_name: ${{ steps.resolve.outputs.tag_name }}
+      tag_sha: ${{ steps.resolve.outputs.tag_sha }}
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Resolve and Validate Version
-        id: release
+      - name: Resolve and Validate Tag and SHA
+        id: resolve
         shell: pwsh
         env:
           EVENT_NAME: ${{ github.event_name }}
-          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_TAG: ${{ inputs.release_tag }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           if ($env:EVENT_NAME -eq 'workflow_dispatch') {
-            $version = $env:INPUT_VERSION.Trim()
-            $tagName = "v$version"
+            $tagName = $env:INPUT_TAG.Trim()
           }
           else {
             $tagName = $env:REF_NAME
-            if ($tagName -notmatch '^v(?<version>\d+\.\d+\.\d+\.\d+)$') {
-              throw "Release tag must use vA.B.C.D: $tagName"
-            }
-            $version = $Matches.version
+          }
+          if ($tagName -notmatch '^v(?<version>\d+\.\d+\.\d+\.\d+)$') {
+            throw "Release tag must use vA.B.C.D: $tagName"
+          }
+          $version = $Matches.version
+          if (($version.Split('.') | Where-Object { [int]$_ -gt 65535 }).Count -gt 0) {
+            throw "Release version components must be between 0 and 65535: $version"
           }
 
-          if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
-            throw "Release version must use A.B.C.D: $version"
-          }
-          foreach ($component in $version.Split('.')) {
-            if ([int]$component -gt 65535) {
-              throw "Release version components must be between 0 and 65535: $version"
-            }
+          # Dereference the exact tag commit to guarantee the produced assets
+          # originate from the released source.
+          $sha = (& gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tagName" --jq '.object.sha').Trim()
+          if (-not $sha -or $sha -notmatch '^[0-9a-f]{40}$') {
+            throw "Unable to dereference release tag $tagName."
           }
 
           ./scripts/Test-ProductConfiguration.ps1 -ExpectedVersion $version | Out-Null
 
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
+          'version=' + $version >> $env:GITHUB_OUTPUT
+          'tag_name=' + $tagName >> $env:GITHUB_OUTPUT
+          'tag_sha=' + $sha >> $env:GITHUB_OUTPUT
+
+      - name: Require Successful CI for Exact SHA
+        shell: pwsh
+        env:
+          TAG_SHA: ${{ steps.resolve.outputs.tag_sha }}
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ github.token }}
+        run: |
+          $required = @('Lint GitHub Actions Workflows', 'Test, Publish and Validate Distributions')
+          $deadline = (Get-Date).AddMinutes(30)
+          while ($true) {
+            $runs = gh api "repos/$env:REPO/actions/runs?sha=$env:TAG_SHA&per_page=100" --jq '.workflow_runs[] | {name: .name, status: .status, conclusion: .conclusion, head_sha: .head_sha}' | ConvertFrom-Json
+            $successCount = 0
+            foreach ($jobName in $required) {
+              $jobRuns = @($runs | Where-Object { $_.name -eq $jobName -and $_.head_sha -eq $env:TAG_SHA })
+              $completed = @($jobRuns | Where-Object { $_.status -eq 'completed' })
+              if ($completed.Count -gt 0 -and ($completed | Where-Object { $_.conclusion -eq 'success' })) {
+                $successCount++
+              }
+            }
+            if ($successCount -eq $required.Count) {
+              Write-Host "Exact-SHA CI gates passed for $env:TAG_SHA."
+              break
+            }
+            if ((Get-Date) -gt $deadline) {
+              throw "Exact-SHA CI gates did not complete successfully for $env:TAG_SHA."
+            }
+            Start-Sleep -Seconds 30
+          }
 
   build-release:
     name: Build and Package GitHub Release (${{ matrix.target_arch }})
     needs: metadata
-    runs-on: windows-latest
+    runs-on: windows-2025
     strategy:
       fail-fast: true
       matrix:
@@ -74,13 +106,24 @@ jobs:
             rust_target: aarch64-pc-windows-msvc
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v7
+      - name: Checkout Exact Release SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.metadata.outputs.tag_sha }}
+          fetch-depth: 0
 
       - name: Setup pinned build toolchain (${{ matrix.rust_target }})
         uses: ./.github/actions/setup-windows-build
         with:
           rust-targets: ${{ matrix.rust_target }}
+
+      - name: Verify Checked Out SHA
+        shell: pwsh
+        run: |
+          $head = (& git rev-parse HEAD).Trim()
+          if ($head -ne '${{ needs.metadata.outputs.tag_sha }}') {
+            throw "Checked out commit $head does not match release SHA ${{ needs.metadata.outputs.tag_sha }}."
+          }
 
       - name: Publish and Validate Unpackaged Self-Contained Distribution
         shell: pwsh
@@ -91,83 +134,192 @@ jobs:
           -BuildVersion ${{ needs.metadata.outputs.version }}
           -SkipTests
 
-      - name: Optional Code Signing with SignTool and PFX
-        shell: pwsh
-        env:
-          SIGNING_CERTIFICATE_BASE64: ${{ secrets.SIGNING_CERTIFICATE_BASE64 }}
-          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
-        run: |
-          if ($env:SIGNING_CERTIFICATE_BASE64) {
-            $certBytes = [System.Convert]::FromBase64String($env:SIGNING_CERTIFICATE_BASE64)
-            $certPath = Join-Path $env:RUNNER_TEMP 'signing-cert.pfx'
-            [System.IO.File]::WriteAllBytes($certPath, $certBytes)
-            try {
-              $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
-                Sort-Object FullName -Descending |
-                Select-Object -First 1
-              if (-not $signTool) { throw 'signtool.exe was not found.' }
-
-              Get-ChildItem 'artifacts/github/${{ matrix.target_arch }}' -Recurse -Include '*.exe','*.dll' |
-                ForEach-Object {
-                  & $signTool.FullName sign /fd SHA256 /f $certPath /p $env:SIGNING_CERTIFICATE_PASSWORD $_.FullName
-                  if ($LASTEXITCODE -ne 0) { throw "Signing failed: $($_.FullName)" }
-                }
-            }
-            finally {
-              Remove-Item $certPath -Force -ErrorAction SilentlyContinue
-            }
-          }
-          else {
-            Write-Host 'Signing certificate is not configured; skipping Authenticode signing.'
-          }
-
       - name: Compress Unpackaged Distribution
         shell: pwsh
         run: |
           $version = '${{ needs.metadata.outputs.version }}'
           $zipPath = "artifacts/EchoVisualizer-$version-${{ matrix.target_arch }}.zip"
           Compress-Archive -Path 'artifacts/github/${{ matrix.target_arch }}/*' -DestinationPath $zipPath -Force
+          "zipPath=$zipPath" >> $env:GITHUB_OUTPUT
 
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v7
+      - name: Upload Release ZIP Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-zip-${{ matrix.target_arch }}
           path: artifacts/*.zip
+          if-no-files-found: error
+
+  build-store-bundle:
+    name: Build Store MSIX Bundle
+    needs: metadata
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout Exact Release SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.metadata.outputs.tag_sha }}
+          fetch-depth: 0
+
+      - name: Setup pinned build toolchain
+        uses: ./.github/actions/setup-windows-build
+        with:
+          rust-targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+
+      - name: Build and Validate Store MSIX Bundle
+        shell: pwsh
+        run: >-
+          ./scripts/Build-Distributions.ps1
+          -Profile Store
+          -RuntimeIdentifiers win-x64,win-arm64
+          -SkipTests
+
+      - name: Upload Store Bundle Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-store-bundle
+          path: artifacts/store/*.msixbundle
+          if-no-files-found: error
 
   publish-release:
-    name: Create Official GitHub Release
-    needs: [metadata, build-release]
+    name: Publish Stable GitHub Release
+    needs: [metadata, build-release, build-store-bundle]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
     steps:
+      - name: Checkout Exact Release SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.metadata.outputs.tag_sha }}
+          fetch-depth: 0
+
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Generate SHA-256 Checksums
+      - name: Collect Toolchain Versions
+        id: toolchain
+        shell: pwsh
         run: |
-          cd artifacts
-          sha256sum EchoVisualizer-*.zip > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          $dotnet = (& dotnet --version 2>$null).Trim()
+          if (-not $dotnet) { $dotnet = "unknown" }
+          "dotnet=$dotnet" >> $env:GITHUB_OUTPUT
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+      - name: Create Draft GitHub Release
+        id: create
+        shell: pwsh
+        run: |
+          $body = @"
+          ## Echo Live Music Visualizer v${{ needs.metadata.outputs.version }}
+
+          High-performance Windows real-time audio visualizer powered by Rust WASAPI DSP and WinUI 3 with Win2D rendering.
+
+          ### Download Options
+          - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-x64.zip`: standalone x64 build.
+          - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-arm64.zip`: standalone ARM64 build.
+          - Store bundle `EchoVisualizer-${{ needs.metadata.outputs.version }}-msixbundle.msixbundle`: Microsoft Store package (submission managed by CI).
+
+          Extract the appropriate archive and launch `EchoVisualizer.exe`. The distribution is self-contained and does not require a separate Windows App Runtime installation.
+          "@
+          $payload = [ordered]@{
+            tag_name = '${{ needs.metadata.outputs.tag_name }}'
+            name = "Echo Visualizer v${{ needs.metadata.outputs.version }}"
+            draft = $true
+            prerelease = $false
+            body = $body
+          }
+          $payloadJson = $payload | ConvertTo-Json -Depth 3
+          $payloadFile = Join-Path $env:RUNNER_TEMP 'release-draft.json'
+          [System.IO.File]::WriteAllText($payloadFile, $payloadJson, (New-Object System.Text.UTF8Encoding($false)))
+          $release = gh api `
+            --method POST `
+            "repos/$env:GITHUB_REPOSITORY/releases" `
+            --input $payloadFile |
+            ConvertFrom-Json
+          if (-not $release.id) { throw 'Draft release was not created.' }
+          "id=$($release.id)" >> $env:GITHUB_OUTPUT
+
+      - name: Generate Release Manifest and Checksums
+        id: generate
+        shell: pwsh
+        env:
+          TAG_SHA: ${{ needs.metadata.outputs.tag_sha }}
+          RELEASE_ID: ${{ steps.create.outputs.id }}
+        run: |
+          $assets = @(
+            Get-ChildItem 'artifacts/*.zip' -File |
+              ForEach-Object { $_.FullName } |
+              Sort-Object
+          )
+          $bundle = @(Get-ChildItem 'artifacts/*.msixbundle' -File | Select-Object -First 1)
+          if (-not $bundle) { throw 'Store bundle asset was not found in release artifacts.' }
+          $assets += $bundle[0].FullName
+
+          $manifest = ./scripts/New-EchoReleaseManifest.ps1 `
+            -Tag '${{ needs.metadata.outputs.tag_name }}' `
+            -SourceCommitSha "$env:TAG_SHA" `
+            -AssetPaths $assets `
+            -ReleaseId "$env:RELEASE_ID"
+
+          Get-ChildItem 'artifacts/*.zip','artifacts/*.msixbundle',$manifest.Path |
+            ForEach-Object {
+              (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + $_.Name
+            } | Sort-Object > artifacts/SHA256SUMS.txt
+          Get-Content artifacts/SHA256SUMS.txt
+          "manifestPath=$($manifest.Path)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Release Assets
+        shell: pwsh
+        run: |
+          $uploadAssets = @(
+            Get-ChildItem 'artifacts/*.zip','artifacts/*.msixbundle','artifacts/SHA256SUMS.txt' -File
+          )
+          $uploadAssets += Get-Item '${{ steps.generate.outputs.manifestPath }}'
+          foreach ($asset in $uploadAssets) {
+            gh release upload '${{ needs.metadata.outputs.tag_name }}' $asset.FullName --clobber
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to upload release asset: $($asset.Name)"
+            }
+          }
+
+      - name: Verify Release Assets and Publish Stable
+        shell: pwsh
+        run: |
+          $expected = @(
+            'EchoVisualizer-${{ needs.metadata.outputs.version }}-win-x64.zip',
+            'EchoVisualizer-${{ needs.metadata.outputs.version }}-win-arm64.zip',
+            'EchoVisualizer-${{ needs.metadata.outputs.version }}-msixbundle.msixbundle',
+            'SHA256SUMS.txt',
+            'EchoVisualizer-${{ needs.metadata.outputs.version }}-release-manifest.json'
+          )
+          $published = gh api "repos/$env:GITHUB_REPOSITORY/releases/${{ steps.create.outputs.id }}" --jq '.assets[] | .name' | ConvertFrom-Json
+          foreach ($name in $expected) {
+            if ($published -notcontains $name) {
+              throw "Release asset is missing after upload: $name"
+            }
+          }
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/${{ steps.create.outputs.id }}" -f draft=false -f prerelease=false | Out-Null
+
+      - name: Attest Release Artifacts
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
-          name: "Echo Visualizer v${{ needs.metadata.outputs.version }}"
-          tag_name: ${{ needs.metadata.outputs.tag_name }}
-          draft: false
-          prerelease: false
-          body: |
-            ## Echo Live Music Visualizer v${{ needs.metadata.outputs.version }}
+          subject-path: |
+            artifacts/*.zip
+            artifacts/*.msixbundle
+            artifacts/*.json
 
-            High-performance Windows real-time audio visualizer powered by Rust WASAPI DSP and WinUI 3 with Win2D rendering.
-
-            ### Download Options
-            - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-x64.zip`: standalone x64 build.
-            - `EchoVisualizer-${{ needs.metadata.outputs.version }}-win-arm64.zip`: standalone ARM64 build.
-
-            Extract the appropriate archive and launch `EchoVisualizer.exe`. The distribution is self-contained and does not require a separate Windows App Runtime installation.
-          files: |
-            artifacts/EchoVisualizer-*.zip
-            artifacts/SHA256SUMS.txt
+      - name: Dispatch Store Workflow
+        shell: pwsh
+        run: |
+          gh workflow run store-publish.yml `
+            --ref 'main' `
+            -f release_tag='${{ needs.metadata.outputs.tag_name }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Store workflow dispatch failed.' }
+        env:
+          GH_TOKEN: ${{ github.token }}
