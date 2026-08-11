@@ -88,16 +88,24 @@ no secret value is ever committed.
 
 1. Merge a new stable release to `main`, create and push the version tag
    `vA.B.C.D` following `.agents/rules/git.md`.
-2. `release.yml` dereferences the exact tag SHA, requires successful CI for that
-   SHA, builds the GitHub ZIPs and the Store bundle from the same SHA, generates
-   the release manifest and checksums, publishes the stable GitHub Release, and
-   explicitly dispatches `store-publish.yml`.
-3. `store-publish.yml` re-reads the published stable release, verifies the exact
-   tag/SHA/version/manifest/asset digest, validates the downloaded bundle, then
-   enters the `microsoft-store-production` Environment and queries Partner
-   Center. The fail-closed state machine either reports already published,
-   resumes a pending commit, uploads a new no-commit draft then commits, or
-   stops without mutation.
+2. `release.yml` resolves the tag (lightweight or annotated) down to the real
+   commit SHA via `Echo.GitHubRelease.psm1`, requires successful CI for that
+   exact SHA, builds the GitHub ZIPs and the Store bundle from the same SHA,
+   generates the release manifest and `SHA256SUMS.txt` (validated by exact
+   filename→hash pairs), publishes the stable GitHub Release, and explicitly
+   dispatches `store-publish.yml`. Publishing is **idempotent**: if a stable
+   release with the exact tag/commit/assets already exists it is reused as a
+   no-op; a draft/pre-release or a conflicting release fails closed instead of
+   being overwritten.
+3. `store-publish.yml` resolves the same tag to the same commit, checks out that
+   SHA in the jobs that consume scripts, verifies the exact
+   tag/SHA/version/manifest/asset digest (recomputing the downloaded bundle hash
+   against both the manifest record and the checksum pair), validates the
+   bundle, then enters the `microsoft-store-production` Environment and runs the
+   read-only preflight against Partner Center. The fail-closed state machine
+   either reports already published, resumes a pending commit only when it
+   exactly matches the target version/package/hash, uploads a new no-commit
+   draft then commits, or stops without mutation.
 4. Certification may take up to three business days; `store-status.yml`
    (scheduled every six hours, read-only) follows it to a terminal state and
    retains sanitized reports for 90 days.
@@ -112,9 +120,12 @@ no secret value is ever committed.
 | Different pending submission exists | Inspect Partner Center; let it finish/cancel, or authorize and use the guarded `delete-target-draft` recovery only for the exact matched target. |
 | Certification failure | Fetch the certification report in Partner Center, fix, and ship a higher product/Store version. |
 
-`delete-target-draft` deletes only a `PendingCommit` draft with the exact target
-version and is a destructive administrative operation; it never deletes a
-committed or certifying submission.
+`delete-target-draft` deletes only a `PendingCommit` draft whose pending target
+version, package name and hash exactly match the release under recovery, and it
+is only reachable through the explicit `recovery_mode=delete-target-draft`
+workflow input. It never deletes a committed, certifying or differently-versioned
+submission, and the submit script re-verifies the target correlation before
+deleting.
 
 ## 6. Troubleshooting
 

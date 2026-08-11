@@ -1308,7 +1308,19 @@ requirement is mapped to the step that must produce its conformance record.
 | R13 | `PARTIAL` | S4–S8 | Action/tool full-SHA pins and negative-integrit tests PASS; live workflow attestation pending. |
 | R14 | `PARTIAL` | S8, S9 | Setup/rotation/recovery docs published; operator execution of the checklist pending. |
 | R15 | `PARTIAL` | S8, S9 | Rules/spec/skill/docs/traceability updated and stale-reference scan PASS; live first submission is the remaining gate. |
-| R16 | `VERIFIED` | S2, S3, S5, S6, S8, S9 | Single-parser/config fixtures, projection mutation test, branding drift catch and duplicate-literal audit all PASS. || R1 | `NOT_STARTED` | S4, S6 | Event/condition fixtures and workflow inspection. |
+| R16 | `PARTIAL` | S2, S3, S5, S6, S8, S9 | Single-parser/config fixtures, projection mutation test, branding drift catch and duplicate-literal audit all PASS; live release remains operator-gated. |
+
+> **Correction notice (R17).** A post-execution audit found that several rows in
+> this matrix and some checkpoints were recorded as PASS/CONFORMING while the
+> underlying release workflow had active defects (per-element `gh` JSON parsing,
+> one-level tag dereference, always-create-draft recovery, Store state conflated
+> with version, unpinned composite action). Those defects are NOT corrected by
+> editing this archive. They are addressed by
+> `PLAN-20260811-RELEASE-CD-HARDENING` (`docs/public/plans/active/2026-08-11--microsoft-store-release-cd-hardening.md`),
+> which records the authoritative implementation, regression fixtures and
+> revalidation. The rows above describe the originally recorded (aspirational)
+> state; they are superseded by that plan's living compliance matrix. The
+> malformed R16 row (a stray `|| R1 | …` fragment) was also repaired here.
 | R2 | `NOT_STARTED` | S2â€“S4 | Exact tag/SHA/version/manifest correlation. |
 | R3 | `NOT_STARTED` | S1, S2, S5 | Version-function and Partner Center monotonicity results. |
 | R4 | `NOT_STARTED` | S1, S3 | Manifest/bundle identity and external identity confirmation. |
