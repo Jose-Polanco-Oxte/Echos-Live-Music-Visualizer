@@ -7,7 +7,7 @@ checkpoints, validation evidence, and handoff information live in each plan.
 
 | Plan ID | Title | Status | Plan |
 |---|---|---|---|
-| None | No active plan | — | — |
+| `PLAN-20260811-MICROSOFT-STORE-RELEASE-CD` | CI/CD seguro y configuración centralizada de releases hacia Microsoft Store | `READY` | [Active plan](active/2026-08-11--microsoft-store-release-cd.md) |
 
 ## Blocked / Replanning
 
