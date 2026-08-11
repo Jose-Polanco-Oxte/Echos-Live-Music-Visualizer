@@ -57,30 +57,35 @@ $cliEnvironment = @{
     MSSTORE_TENANT_ID = [Environment]::GetEnvironmentVariable('PARTNER_CENTER_TENANT_ID')
     MSSTORE_SELLER_ID = [Environment]::GetEnvironmentVariable('PARTNER_CENTER_SELLER_ID')
 }
+$secretValues = @(
+    $cliEnvironment.Values |
+        Where-Object { $_ } |
+        ForEach-Object { [string]$_ }
+)
 
-$configureResult = Invoke-MsStoreCliJson `
+$configureResult = Invoke-EchoMsStoreCli `
     -CliPath $CliPath `
     -Arguments @('configure', '--json') `
-    -Environment $cliEnvironment
+    -Environment $cliEnvironment `
+    -SecretValues $secretValues
 if ($configureResult.ExitCode -ne 0) {
     throw "msstore configure failed (exit $($configureResult.ExitCode))."
 }
 
 # Read-only status only. Never a mutating verb.
-$status = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment
+$status = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues
 
 $report = [ordered]@{
     productId = $productId
     packageFamilyName = $config.Store.PackageFamilyName
     targetStoreVersion = $config.Store.Versioning.StoreVersion
     state = $status.State
+    latestPublishedVersion = $status.LatestPublishedVersion
+    pendingTargetVersion = $status.PendingTargetVersion
     observedAt = (Get-Date).ToUniversalTime().ToString('o')
 }
-if ($status.Json -and -not [string]::IsNullOrWhiteSpace([string]$status.Json)) {
-    $report.rawState = $null
-}
-$report.outcome = if ($status.State -eq 'Published') { 'PUBLISHED' } elseif ($status.State -in @('PreProcessing', 'Certification', 'CommitStarted', 'Release', 'Publishing')) { 'IN_PROGRESS' } else { 'TERMINAL_FAILURE' }
-$report.conclusion = if ($status.State -eq 'Published') { 'success' } elseif ($report.outcome -eq 'IN_PROGRESS') { 'in_progress' } else { 'failure' }
+$report.outcome = if ($status.State -eq 'Published') { 'PUBLISHED' } elseif ($status.State -eq 'NoSubmission') { 'NO_SUBMISSION' } elseif ($status.State -in @('PreProcessing', 'Certification', 'CommitStarted', 'Release', 'Publishing')) { 'IN_PROGRESS' } elseif ($status.State -eq 'PendingCommit') { 'PENDING_COMMIT' } else { 'TERMINAL_FAILURE' }
+$report.conclusion = if ($report.outcome -in @('PUBLISHED', 'NO_SUBMISSION')) { 'success' } elseif ($report.outcome -eq 'IN_PROGRESS') { 'in_progress' } else { 'failure' }
 
 $json = $report | ConvertTo-Json -Depth 4
 if ($OutFile) {

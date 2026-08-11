@@ -45,14 +45,11 @@ $RuntimeIdentifiers = @(
         ForEach-Object { $_.Trim() } |
         Where-Object { $_ }
 )
-foreach ($runtimeIdentifier in $RuntimeIdentifiers) {
-    if ($runtimeIdentifier -notin @('win-x64', 'win-arm64')) {
-        throw "Unsupported runtime identifier: $runtimeIdentifier"
-    }
-}
 if ($RuntimeIdentifiers.Count -eq 0) {
     throw 'At least one runtime identifier is required.'
 }
+# Validate the requested RIDs against the centralized configuration AFTER
+# metadata is loaded (metadata loading is deferred to main flow).
 
 function Write-Stage {
     param([Parameter(Mandatory)][string]$Message)
@@ -268,6 +265,18 @@ function Get-ProductMetadata {
         PackingBase = $metadata.Store.Versioning.PackingBase
         StoreVersion = $metadata.Store.Versioning.StoreVersion
         ArtifactType = $metadata.Store.ArtifactType
+        Architectures = @(
+            $metadata.Store.Architectures | ForEach-Object {
+                [pscustomobject]@{
+                    Include = $_.Include
+                    RuntimeIdentifier = $_.RuntimeIdentifier
+                    RustTarget = $_.RustTarget
+                    ProcessorArchitecture = $_.ProcessorArchitecture
+                }
+            }
+        )
+        Capabilities = @($metadata.Store.Capabilities | ForEach-Object { $_.Name })
+        IconSizes = @($metadata.Branding.Icon.Sizes)
     }
 }
 
@@ -326,14 +335,22 @@ function Resolve-SigningCertificate {
 
 function Get-PlatformForRuntime {
     param([Parameter(Mandatory)][string]$RuntimeIdentifier)
-    if ($RuntimeIdentifier -eq 'win-arm64') { return 'arm64' }
-    return 'x64'
+    foreach ($architecture in @($script:ProductMetadata.Architectures)) {
+        if ($architecture.RuntimeIdentifier -eq $RuntimeIdentifier) {
+            return $architecture.ProcessorArchitecture
+        }
+    }
+    throw "Runtime identifier '$RuntimeIdentifier' is not declared in build/Product.props."
 }
 
 function Get-RustTargetForRuntime {
     param([Parameter(Mandatory)][string]$RuntimeIdentifier)
-    if ($RuntimeIdentifier -eq 'win-arm64') { return 'aarch64-pc-windows-msvc' }
-    return 'x86_64-pc-windows-msvc'
+    foreach ($architecture in @($script:ProductMetadata.Architectures)) {
+        if ($architecture.RuntimeIdentifier -eq $RuntimeIdentifier) {
+            return $architecture.RustTarget
+        }
+    }
+    throw "Runtime identifier '$RuntimeIdentifier' is not declared in build/Product.props."
 }
 
 function Assert-PeArchitecture {
@@ -384,8 +401,15 @@ function Invoke-BrandAssetCheck {
 function Assert-IcoFrames {
     param(
         [Parameter(Mandatory)][string]$Path,
-        [int[]]$ExpectedSizes = @(16, 20, 24, 32, 40, 48, 64, 128, 256)
+        [int[]]$ExpectedSizes
     )
+
+    if (-not $ExpectedSizes) {
+        $ExpectedSizes = @($script:ProductMetadata.IconSizes)
+        if (-not $ExpectedSizes) {
+            throw 'Application icon sizes must be provided by build/Product.props; no fallback literal is permitted.'
+        }
+    }
 
     Assert-FileExists $Path
     $stream = [System.IO.File]::OpenRead($Path)
@@ -628,8 +652,10 @@ function Build-StoreBundle {
 
     try {
         $productVersion = $script:ProductMetadata.Version
+        # Artifact type is schema-enforced (required enum) so no fallback literal
+        # is permitted; a missing value must fail closed.
         $artifactType = $script:ProductMetadata.ArtifactType
-        if (-not $artifactType) { $artifactType = 'msixbundle' }
+        if (-not $artifactType) { throw 'Store artifact type is missing from build/Product.props.' }
         $bundleName = "EchoVisualizer-$productVersion-$artifactType.$artifactType"
         $stagingFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -ErrorAction SilentlyContinue)
         if ($stagingFiles.Count -gt 0) {
@@ -731,7 +757,10 @@ function Expand-StorePackage {
     New-Item -ItemType Directory -Path $packageDirectory, $aggregateAssetsDirectory | Out-Null
 
     try {
-        $isBundle = ($PackagePath -like '*.msixbundle') -or ($PackagePath -like '*.appxbundle')
+        # Bundle detection comes from the centralized artifact type (R13).
+        $storeArtifactType = $script:ProductMetadata.ArtifactType
+        if (-not $storeArtifactType) { throw 'Store artifact type is missing from build/Product.props.' }
+        $isBundle = ($PackagePath -like "*.$storeArtifactType")
         if ($isBundle) {
             $bundleDirectory = Join-Path $temporaryRoot 'bundle'
             New-Item -ItemType Directory -Path $bundleDirectory -Force | Out-Null
@@ -852,7 +881,8 @@ function Assert-MsixManifest {
 
     $capabilities = $manifest.SelectNodes('/*[local-name()="Package"]/*[local-name()="Capabilities"]/*') |
         ForEach-Object { $_.Name }
-    foreach ($requiredCapability in @('runFullTrust', 'microphone')) {
+    $requiredCapabilities = @($script:ProductMetadata.Capabilities)
+    foreach ($requiredCapability in $requiredCapabilities) {
         if ($capabilities -notcontains $requiredCapability) {
             throw "MSIX package is missing capability '$requiredCapability'."
         }
@@ -1042,6 +1072,13 @@ try {
 
     $manifestMetadata = Get-ProductMetadata
     $script:ProductMetadata = $manifestMetadata
+    # R13: every requested runtime identifier must be declared in Product.props.
+    $configuredRids = @($manifestMetadata.Architectures | ForEach-Object { $_.RuntimeIdentifier })
+    foreach ($runtimeIdentifier in $RuntimeIdentifiers) {
+        if ($runtimeIdentifier -notin $configuredRids) {
+            throw "Runtime identifier '$runtimeIdentifier' is not declared in build/Product.props; declared: '$($configuredRids -join ', ')'."
+        }
+    }
     Invoke-BrandAssetCheck
     Assert-IcoFrames -Path (Join-Path $script:RepoRoot 'src\ui\Assets\AppIcon.ico')
     if (-not $PackageVersion) { $PackageVersion = $manifestMetadata.Version }

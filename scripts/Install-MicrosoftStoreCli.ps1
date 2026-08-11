@@ -67,17 +67,28 @@ if ($actualSha256 -cne $expectedSha256) {
     throw "msstore CLI archive digest mismatch. Expected $expectedSha256, found $actualSha256."
 }
 
-# Also validate the publisher checksum file when GitHub exposes it.
+# Also validate the publisher checksum file when GitHub exposes it. The pinned
+# digest above is always authoritative; an explicit publisher-checksum mismatch
+# is a hard error and must never fall into a "file unavailable" catch.
 $checksumCandidate = $releaseUrl + '.sha256'
+$checksumAvailable = $true
 try {
-    $checksumContent = (Invoke-WebRequest -Uri $checksumCandidate -UseBasicParsing -ErrorAction Stop).Content.Trim()
-    $publishedHash = ($checksumContent -split '\s+')[0].ToLowerInvariant()
-    if ($publishedHash -and $publishedHash -cne $expectedSha256) {
-        throw "msstore CLI publisher checksum mismatch. Expected $publishedHash, found $expectedSha256."
-    }
+    $checksumResponse = Invoke-WebRequest -Uri $checksumCandidate -UseBasicParsing -ErrorAction Stop
 }
 catch {
+    $checksumAvailable = $false
     Write-Host 'Publisher checksum file was not available; the pinned digest validation above remains authoritative.' -ForegroundColor DarkYellow
+}
+if ($checksumAvailable) {
+    $checksumContent = $checksumResponse.Content.Trim()
+    $publishedHash = ($checksumContent -split '\s+')[0].ToLowerInvariant()
+    if (-not $publishedHash -or $publishedHash -notmatch '^[0-9a-f]{64}$') {
+        throw "msstore publisher checksum file was malformed: '$checksumContent'"
+    }
+    if ($publishedHash -cne $expectedSha256) {
+        throw "msstore CLI publisher checksum mismatch. Published '$publishedHash', pinned '$expectedSha256'."
+    }
+    Write-Host "Publisher checksum validated: $publishedHash" -ForegroundColor DarkGray
 }
 
 Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot -Force
@@ -96,7 +107,7 @@ Copy-Item -LiteralPath $cliCandidate.FullName -Destination (Join-Path $cliRoot '
 # Smoke test the exact pinned version.
 $versionOutput = (& (Join-Path $cliRoot 'msstore.exe') --version 2>&1) -join ' '
 if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch [regex]::Escape($expectedVersion)) {
-    throw "msstore --version did not report $expectedVersion: $versionOutput"
+    throw "msstore --version did not report the pinned version '$expectedVersion': $versionOutput"
 }
 
 Write-Host "msstore CLI v$expectedVersion installed at $cliRoot" -ForegroundColor Green

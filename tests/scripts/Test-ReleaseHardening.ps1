@@ -340,4 +340,37 @@ Assert-Throws { Get-EchoDistributionConfiguration -Path (Join-Path $fixturesStor
 # Invalid ManifestElement enum fails closed.
 Assert-Throws { Get-EchoDistributionConfiguration -Path (Join-Path $fixturesStore 'Product.InvalidCapabilityElement.props') } 'unsupported ManifestElement' 'invalid capability element rejected'
 
+# ---------------------------------------------------------------------------
+# R6 — CLI installer parses and never uses the broken variable interpolation
+# ---------------------------------------------------------------------------
+Write-Host '== R6 CLI installer ==' -ForegroundColor Cyan
+$installerPath = Join-Path $repoRoot 'scripts\Install-MicrosoftStoreCli.ps1'
+$installerTokens = $null
+$installerErrors = $null
+[System.Management.Automation.Language.Parser]::ParseFile($installerPath, [ref]$installerTokens, [ref]$installerErrors) | Out-Null
+Assert-Equal 0 $installerErrors.Count 'Install-MicrosoftStoreCli.ps1 parses with zero errors'
+$installerText = Get-Content -Raw $installerPath
+Assert-True ($installerText -notmatch '`$\x7B?expectedVersion:') 'no broken $expectedVersion: interpolation remains in the installer'
+
+# ---------------------------------------------------------------------------
+# R13 — config-derived projections (no active duplicate literals)
+# ---------------------------------------------------------------------------
+Write-Host '== R13 Config-derived projections ==' -ForegroundColor Cyan
+$currentConfig = Get-EchoDistributionConfiguration
+
+# Runtime -> rust target / platform must derive from the architecture items.
+Assert-Equal 'x86_64-pc-windows-msvc' (($currentConfig.Store.Architectures | Where-Object { $_.RuntimeIdentifier -eq 'win-x64' }).RustTarget) 'win-x64 rust target from config'
+Assert-Equal 'aarch64-pc-windows-msvc' (($currentConfig.Store.Architectures | Where-Object { $_.RuntimeIdentifier -eq 'win-arm64' }).RustTarget) 'win-arm64 rust target from config'
+Assert-Equal 'x64' (($currentConfig.Store.Architectures | Where-Object { $_.RuntimeIdentifier -eq 'win-x64' }).ProcessorArchitecture) 'win-x64 platform from config'
+Assert-Equal 'arm64' (($currentConfig.Store.Architectures | Where-Object { $_.RuntimeIdentifier -eq 'win-arm64' }).ProcessorArchitecture) 'win-arm64 platform from config'
+
+# Icon sizes derive from Branding config.
+Assert-True ($currentConfig.Branding.Icon.Sizes -contains 16 -and $currentConfig.Branding.Icon.Sizes -contains 256) 'icon sizes include the centralized min/max'
+
+# Build-Distributions must not contain the banned fallback literal or the
+# hardcoded capability list any more.
+$buildScript = Get-Content -Raw (Join-Path $repoRoot 'scripts\Build-Distributions.ps1')
+Assert-True ($buildScript -notmatch "(?m)if \(`\?not `\?artifactType\) \{ `\?artifactType = 'msixbundle'") 'no msixbundle fallback literal in Build-Distributions'
+Assert-True ($buildScript -notmatch "@\('runFullTrust', 'microphone'\)") 'no hardcoded capability list in Build-Distributions'
+
 Write-Host 'Release hardening regression fixtures: PASS' -ForegroundColor Green

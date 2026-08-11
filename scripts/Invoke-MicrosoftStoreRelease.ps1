@@ -78,25 +78,48 @@ $cliEnvironment = @{
     MSSTORE_SELLER_ID = [Environment]::GetEnvironmentVariable('PARTNER_CENTER_SELLER_ID')
 }
 
+# Redaction values: never surface credential values in errors or reports.
+$secretValues = @(
+    $cliEnvironment.Values |
+        Where-Object { $_ } |
+        ForEach-Object { [string]$_ }
+)
+
 # Authenticate once via `msstore configure`.
-$configureResult = Invoke-MsStoreCliJson `
+$configureResult = Invoke-EchoMsStoreCli `
     -CliPath $CliPath `
     -Arguments @('configure', '--json') `
-    -Environment $cliEnvironment
+    -Environment $cliEnvironment `
+    -SecretValues $secretValues
 if ($configureResult.ExitCode -ne 0) {
     throw "msstore configure failed (exit $($configureResult.ExitCode))."
 }
 
+# Target bundle identity from the verified release manifest and the exact
+# downloaded asset, so a pending submission can be correlated (R7/R10).
+$bundleName = Split-Path $bundleFull -Leaf
+$bundleSha256 = (Get-FileHash -LiteralPath $bundleFull -Algorithm SHA256).Hash.ToLowerInvariant()
+$targetPackageFamilyName = $config.Store.PackageFamilyName
+
 if ($Operation -eq 'delete-target-draft') {
-    Write-Host "Recovery: deleting target draft for $productId at $targetVersion" -ForegroundColor Yellow
-    $current = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment
+    # R12: deletion requires an explicit input (already validated by the caller
+    # workflow) plus proof that the pending draft is exactly the target.
+    Write-Host "Recovery: verifying target draft for $productId at $targetVersion" -ForegroundColor Yellow
+    $current = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues
     if ($current.State -ne 'PendingCommit') {
         throw "Target draft deletion requires state PendingCommit; found $($current.State)."
     }
-    $deleteResult = Invoke-MsStoreCliJson `
+    if ($current.PendingTargetVersion -and $current.PendingTargetVersion -ne $targetVersion) {
+        throw "Refusing to delete a pending draft for $($current.PendingTargetVersion); target is $targetVersion."
+    }
+    if ($current.PendingPackageName -and $current.PendingPackageName -ne $bundleName) {
+        throw "Refusing to delete a pending draft for '$($current.PendingPackageName)'; target bundle is '$bundleName'."
+    }
+    $deleteResult = Invoke-EchoMsStoreCli `
         -CliPath $CliPath `
         -Arguments @('submission', 'delete', '--productid', $productId, '--json') `
-        -Environment $cliEnvironment
+        -Environment $cliEnvironment `
+        -SecretValues $secretValues
     if ($deleteResult.ExitCode -ne 0) {
         throw "msstore submission delete failed (exit $($deleteResult.ExitCode))."
     }
@@ -109,7 +132,11 @@ $preflight = Invoke-EchoStorePreflight `
     -CliPath $CliPath `
     -ProductId $productId `
     -TargetVersion $targetVersion `
-    -Environment $cliEnvironment
+    -TargetBundleName $bundleName `
+    -TargetBundleSha256 $bundleSha256 `
+    -TargetPackageFamilyName $targetPackageFamilyName `
+    -Environment $cliEnvironment `
+    -SecretValues $secretValues
 
 switch ($preflight.Verdict.Action) {
     'monitor-only' {
@@ -118,7 +145,7 @@ switch ($preflight.Verdict.Action) {
     }
     'commit-resume' {
         Write-Host "Resuming existing pending submission for $targetVersion." -ForegroundColor Cyan
-        Invoke-EchoStoreCommit -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment | Out-Null
+        Invoke-EchoStoreCommit -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues | Out-Null
         Write-Host 'Existing draft committed.' -ForegroundColor Green
         exit 0
     }
@@ -128,17 +155,18 @@ switch ($preflight.Verdict.Action) {
             -CliPath $CliPath `
             -ProductId $productId `
             -BundlePath $bundleFull `
-            -Environment $cliEnvironment
+            -Environment $cliEnvironment `
+            -SecretValues $secretValues
         if ($publish.ExitCode -ne 0) {
             throw "msstore publish (no-commit) failed (exit $($publish.ExitCode))."
         }
 
-        $verify = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment
+        $verify = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues
         if ($verify.State -ne 'PendingCommit') {
             throw "Expected PendingCommit after no-commit publish; found $($verify.State)."
         }
 
-        Invoke-EchoStoreCommit -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment | Out-Null
+        Invoke-EchoStoreCommit -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues | Out-Null
         Write-Host "Draft uploaded and committed for $targetVersion." -ForegroundColor Green
         exit 0
     }

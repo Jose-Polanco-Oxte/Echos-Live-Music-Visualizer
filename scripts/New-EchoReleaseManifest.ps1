@@ -73,11 +73,12 @@ $assetRecords = @(
 )
 $assetRecords = @($assetRecords | Sort-Object filename)
 
+# Inner architectures consumed from the centralized configuration (R13/D5);
+# never a hardcoded x64/arm64 list.
 $innerBundle = @(
     foreach ($asset in $assetRecords) {
         if ($asset.mediaRole -eq 'store-bundle') {
-            'x64'
-            'arm64'
+            @($config.Store.Architectures | ForEach-Object { $_.ProcessorArchitecture } | Sort-Object)
         }
     }
 )

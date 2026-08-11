@@ -33,8 +33,9 @@ $bundleFull = [System.IO.Path]::GetFullPath($BundlePath)
 if (-not (Test-Path -LiteralPath $bundleFull -PathType Leaf)) {
     throw "Store bundle is missing: $bundleFull"
 }
-if ($bundleFull -notlike '*.msixbundle') {
-    throw "Store artifact must be an .msixbundle: $bundleFull"
+$expectedExtension = '.' + $config.Store.ArtifactType
+if (-not $bundleFull.EndsWith($expectedExtension, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Store artifact must be a $expectedExtension bundle: $bundleFull"
 }
 
 # Locate MakeAppx.

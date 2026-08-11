@@ -4,19 +4,19 @@
 
 - **Plan ID:** `PLAN-20260811-RELEASE-CD-HARDENING`
 - **Status:** `IN_PROGRESS`
-- **Verification state:** `VERIFIED` (baseline reconciliado en CP-002); `STALE` mientras la implementación muta archivos.
+- **Verification state:** `STALE` (implementation mutated modules/scripts since CP-002; CP-003 will revalidate)
 - **Created:** 2026-08-11
 - **Last updated:** 2026-08-11
 - **Branch/worktree:** `ci/release-cd-hardening`, descendiente de `91eebe9` (contiene la implementación auditada y `.agents/`).
 - **Planning baseline revision:** `6a1ed44` (`dev`, autoría) — la integración real de la implementación está en `91eebe9`.
 - **Implementation evidence revision:** `91eebe9` (baseline confirmado como ancestro de HEAD).
 - **Working tree at authoring:** `dev` con la implementación auditada integrada; la ejecución continúa sobre `ci/release-cd-hardening`.
-- **Active milestone:** M1 — baseline y pruebas de regresión
-- **Active step:** Step 1 — reconciliar el baseline y preparar fixtures
-- **Completed steps:** 0 / 6
-- **Last checkpoint:** `CP-002`
-- **Last validated checkpoint:** `CP-002`
-- **Next action:** crear fixtures regresivos y módulo compartido `Echo.GitHubRelease.psm1` (C1) antes de tocar los workflows.
+- **Active milestone:** M4 — Release, provenance y publicación por workflow
+- **Active step:** Step 4 — corregir resolución GitHub, idempotencia y payload provenance
+- **Completed steps:** 3 / 6 (Step 1 M1, Step 2 M2, Step 3 M3)
+- **Last checkpoint:** `CP-003`
+- **Last validated checkpoint:** `CP-003`
+- **Next action:** reescribir `release.yml` y `store-publish.yml` sobre `Echo.GitHubRelease.psm1` (C2/C3), sin filtros `.items[]` convertidos desde stdout; volver a comprobar hashes exactos tras download-artifact (C7, R5/R8).
 - **Current blockers:** no hay bloqueo de implementación offline; Partner Center y los secretos de producción siguen siendo gates externos y no se deben activar durante la implementación offline.
 - **Open plan deviations:** ninguna.
 - **Supersedes:** —
@@ -899,6 +899,23 @@ sin afirmar que Partner Center fue publicado.
 - No implementation changes have been made by plan authoring.
 
 ## Checkpoint Ledger
+
+### CP-003 — 2026-08-11
+
+- **Plan status:** `IN_PROGRESS`
+- **Verification state:** `VERIFIED` (validated at this checkpoint; becomes STALE on next mutation)
+- **Active milestone:** M4
+- **Active step:** Step 4
+- **Repository revision:** `ci/release-cd-hardening`
+- **Working tree:** implementation changes staged/committed per step
+- **Changes since CP-002:** Step 1 committed as `7f0f931`; Step 2 (R13 centralization in Build-Distributions/New-EchoReleaseManifest/Test-StoreReleaseArtifact) and Step 3 (R6 installer, R9-R12 state adapter consumers, retry/redaction) implemented
+- **Validation performed:** parser check now ZERO failures across all scripts/modules (installer `$expectedVersion:` fixed); Test-StoreReleasePipeline PASS; Test-ReleaseHardening PASS (R2-R6, R9-R11, R13, R14); Generate-BrandAssets -Check PASS; distribution literal audit PASS; Test-ProductConfiguration -AsJson correct; offline Store bundle + regenerated manifest validated via Test-StoreReleaseArtifact (V10-style)
+- **Validation result:** PASS for M2/M3 scope
+- **Conformance state:** CONFORMING
+- **Compliance changes:** R6, R9, R10, R11, R12 → VERIFIED (offline); R13, R14 → VERIFIED; R2/R3/R4/R5 partial (module + fixtures verified; workflow wiring pending in Step 4)
+- **Open deviations:** None
+- **Blockers:** None (offline); Partner Center live gates remain operator-gated
+- **Next exact action:** rewrite release.yml (C2) and store-publish.yml (C3) on Echo.GitHubRelease.psm1 with real SHA checkout in consuming jobs, exact-hash payload verification (C7), and remove `.items[]`→ConvertFrom-Json patterns
 
 ### CP-002 — 2026-08-11
 
