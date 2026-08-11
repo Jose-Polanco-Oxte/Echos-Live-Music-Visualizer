@@ -1,0 +1,68 @@
+<Project>
+  <PropertyGroup>
+    <EchoDistributionSchemaVersion>1</EchoDistributionSchemaVersion>
+    <EchoProductVersion>0.2.0.300</EchoProductVersion>
+    <EchoCoreVersion>0.2.0</EchoCoreVersion>
+    <EchoProductName>Echo Visualizer</EchoProductName>
+    <EchoPublisherDisplayName>Tun4z</EchoPublisherDisplayName>
+    <EchoPackageIdentityName>Tun4z.EchoVisualizer</EchoPackageIdentityName>
+    <EchoPackagePublisher>CN=8C71527D-01B9-4285-A94B-1585E7C0DA03</EchoPackagePublisher>
+    <EchoApplicationId>App</EchoApplicationId>
+    <EchoApplicationIcon>Assets\AppIcon.ico</EchoApplicationIcon>
+    <EchoBrandBackgroundColor>#03060F</EchoBrandBackgroundColor>
+    <EchoWin32AssemblyIdentityName>EchoVisualizer.app</EchoWin32AssemblyIdentityName>
+    <EchoWin32AssemblyManifestVersion>1.0.0.0</EchoWin32AssemblyManifestVersion>
+    <EchoStoreProductId>9NJMJFH8J616</EchoStoreProductId>
+    <EchoPackageFamilyName>Tun4z.EchoVisualizer_ga3qxkah0cx76</EchoPackageFamilyName>
+    <EchoStoreArtifactType>msixbundle</EchoStoreArtifactType>
+    <EchoStorePublishMode>Immediate</EchoStorePublishMode>
+    <EchoStoreTargetDeviceFamily>Windows.Desktop</EchoStoreTargetDeviceFamily>
+    <EchoStoreMinVersion>10.0.17763.0</EchoStoreMinVersion>
+    <EchoStoreMaxVersionTested>10.0.26100.0</EchoStoreMaxVersionTested>
+    <EchoPrivacyPolicyUrl>https://example.com/privacy/</EchoPrivacyPolicyUrl>
+    <EchoStoreVersionPackingBase>256</EchoStoreVersionPackingBase>
+    <EchoBrandSource>docs/public/Echo-Logo-Large.png</EchoBrandSource>
+    <EchoBrandOutputDirectory>src/ui/Assets</EchoBrandOutputDirectory>
+    <EchoBrandIconFile>AppIcon.ico</EchoBrandIconFile>
+    <EchoBrandIconSizes>16;20;24;32;40;48;64;128;256</EchoBrandIconSizes>
+    <EchoMsStoreCliVersion>0.3.9</EchoMsStoreCliVersion>
+    <EchoMsStoreCliAssetName>MSStoreCLI-win-x64.zip</EchoMsStoreCliAssetName>
+    <EchoMsStoreCliDotNetSdkVersion>9.0.316</EchoMsStoreCliDotNetSdkVersion>
+    <EchoMsStoreCliRuntimeMajor>9</EchoMsStoreCliRuntimeMajor>
+    <EchoMsStoreCliSha256>bf2f9aa47135eb0820c69a3936e2592a3847248fc650a6cda51cf3b5a8c605fb</EchoMsStoreCliSha256>
+    <EchoGitHubStoreEnvironment>microsoft-store-production</EchoGitHubStoreEnvironment>
+  </PropertyGroup>
+  <ItemGroup>
+    <EchoStoreArchitecture Include="x64">
+      <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+      <RustTarget>x86_64-pc-windows-msvc</RustTarget>
+      <ProcessorArchitecture>x64</ProcessorArchitecture>
+    </EchoStoreArchitecture>
+    <EchoStoreArchitecture Include="arm64">
+      <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
+      <RustTarget>aarch64-pc-windows-msvc</RustTarget>
+      <ProcessorArchitecture>arm64</ProcessorArchitecture>
+    </EchoStoreArchitecture>
+    <EchoStoreCapability Include="runFullTrust">
+      <ManifestElement>rescap:Capability</ManifestElement>
+    </EchoStoreCapability>
+    <EchoStoreCapability Include="microphone">
+      <ManifestElement>DeviceCapability</ManifestElement>
+    </EchoStoreCapability>
+    <EchoBrandAsset Include="StoreLogo.png"><Width>50</Width><Height>50</Height><Scales>100;125;150;200;400</Scales></EchoBrandAsset>
+    <EchoBrandAsset Include="Square44x44Logo.png"><Width>44</Width><Height>44</Height><Scales>100;125;150;200;400</Scales></EchoBrandAsset>
+    <EchoBrandAsset Include="Square150x150Logo.png"><Width>150</Width><Height>150</Height><Scales>100;125;150;200;400</Scales></EchoBrandAsset>
+    <EchoBrandAsset Include="Wide310x150Logo.png"><Width>310</Width><Height>150</Height><Scales>100;125;150;200;400</Scales></EchoBrandAsset>
+    <EchoBrandAsset Include="SplashScreen.png"><Width>620</Width><Height>300</Height><Scales>100;125;150;200;400</Scales></EchoBrandAsset>
+    <EchoBrandTargetSizeAsset Include="Square44x44Logo">
+      <Sizes>16;20;24;30;32;36;40;44;48;60;64;72;80;96;256</Sizes>
+      <IncludeUnplated>true</IncludeUnplated>
+    </EchoBrandTargetSizeAsset>
+    <EchoExternalBinding Include="PARTNER_CENTER_TENANT_ID"><Kind>Secret</Kind><Scope>Environment</Scope><Required>true</Required><Purpose>Tenant</Purpose></EchoExternalBinding>
+    <EchoExternalBinding Include="PARTNER_CENTER_SELLER_ID"><Kind>Secret</Kind><Scope>Environment</Scope><Required>true</Required><Purpose>Seller</Purpose></EchoExternalBinding>
+    <EchoExternalBinding Include="PARTNER_CENTER_CLIENT_ID"><Kind>Secret</Kind><Scope>Environment</Scope><Required>true</Required><Purpose>Client</Purpose></EchoExternalBinding>
+    <EchoExternalBinding Include="PARTNER_CENTER_CLIENT_SECRET"><Kind>Secret</Kind><Scope>Environment</Scope><Required>true</Required><Purpose>Secret</Purpose></EchoExternalBinding>
+    <EchoExternalBinding Include="SIGNING_CERTIFICATE_BASE64"><Kind>Secret</Kind><Scope>Environment</Scope><Required>false</Required><Purpose>Signing</Purpose></EchoExternalBinding>
+    <EchoExternalBinding Include="SIGNING_CERTIFICATE_PASSWORD"><Kind>Secret</Kind><Scope>Environment</Scope><Required>false</Required><Purpose>Password</Purpose></EchoExternalBinding>
+  </ItemGroup>
+</Project>

@@ -27,6 +27,11 @@ $script:ProjectPath = Join-Path $script:RepoRoot 'src\ui\EchoVisualizer.csproj'
 $script:ManifestPath = Join-Path $script:RepoRoot 'src\ui\Package.appxmanifest'
 $script:ProductValidationPath = Join-Path $script:RepoRoot 'scripts\Test-ProductConfiguration.ps1'
 $script:BrandingGeneratorPath = Join-Path $script:RepoRoot 'scripts\Generate-BrandAssets.ps1'
+$script:ReleaseMetadataModulePath = Join-Path $script:PSScriptRoot 'modules\Echo.ReleaseMetadata.psm1'
+if (-not (Test-Path -LiteralPath $script:ReleaseMetadataModulePath -PathType Leaf)) {
+    throw "Shared distribution configuration parser is missing: $script:ReleaseMetadataModulePath"
+}
+Import-Module $script:ReleaseMetadataModulePath -Force -DisableNameChecking
 $script:ArtifactsRoot = Join-Path $script:RepoRoot 'artifacts'
 $script:ProductMetadata = $null
 $script:BaseProcessEnvironment = @{}
@@ -104,10 +109,12 @@ function ConvertTo-StoreVersion {
     param([Parameter(Mandatory)][string]$Version)
 
     Assert-Version $Version
-    # Microsoft Store requires the package version revision (fourth component)
-    # to be zero, so Store submissions use A.B.C.0 regardless of the declared
-    # product build number.
-    return (($Version.Split('.')[0..2] -join '.') + '.0')
+    # D5: Microsoft requires the fourth Store component to be zero. The store
+    # build S = (C * PackingBase) + D is derived by the shared module so the
+    # mapping stays monotonic and injective for A.B.C.D releases.
+    $packingBase = $script:ProductMetadata.PackingBase
+    if (-not $packingBase) { $packingBase = 256 }
+    return (Get-EchoStoreVersion -ProductVersion $Version -PackingBase $packingBase)
 }
 
 function Remove-SafeArtifactDirectory {
@@ -238,8 +245,27 @@ function Get-ProductMetadata {
     if (-not (Test-Path -LiteralPath $script:ProductValidationPath -PathType Leaf)) {
         throw "Product configuration validator is missing: $script:ProductValidationPath"
     }
-    $json = & $script:ProductValidationPath -AsJson
-    return ($json | ConvertFrom-Json)
+    if (Test-Path -LiteralPath (Join-Path $script:RepoRoot 'build\branding.json') -PathType Leaf) {
+        throw 'build/branding.json is obsolete; distribution/branding configuration must live only in build/Product.props.'
+    }
+    $metadata = Get-EchoDistributionConfiguration
+    # Preserve the legacy flat view used across the pipeline while the D19
+    # object remains authoritative.
+    return [pscustomobject]@{
+        Version = $metadata.Product.Version
+        CoreVersion = $metadata.Product.CoreVersion
+        DisplayName = $metadata.Product.Name
+        PublisherDisplayName = $metadata.Product.PublisherDisplayName
+        Name = $metadata.Product.PackageIdentityName
+        Publisher = $metadata.Product.PackagePublisher
+        ApplicationId = $metadata.Product.ApplicationId
+        ApplicationIcon = $metadata.Product.ApplicationIcon
+        BackgroundColor = $metadata.Product.BrandBackgroundColor
+        Win32AssemblyIdentityName = $metadata.Product.Win32AssemblyIdentityName
+        Win32AssemblyManifestVersion = $metadata.Product.Win32AssemblyManifestVersion
+        PackingBase = $metadata.Store.Versioning.PackingBase
+        StoreVersion = $metadata.Store.Versioning.StoreVersion
+    }
 }
 
 function New-VersionedPackageManifest {

@@ -8,14 +8,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$recipePath = Join-Path $repoRoot 'build\branding.json'
-if (-not (Test-Path -LiteralPath $recipePath -PathType Leaf)) {
-    throw "Branding recipe is missing: $recipePath"
+$modulePath = Join-Path $PSScriptRoot 'modules\Echo.ReleaseMetadata.psm1'
+if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
+    throw "Shared distribution configuration parser is missing: $modulePath"
 }
+Import-Module $modulePath -Force -DisableNameChecking
+$recipe = Get-EchoDistributionConfiguration
 
-$recipe = Get-Content -LiteralPath $recipePath -Raw | ConvertFrom-Json
-$sourcePath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $recipe.source))
-$defaultOutput = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $recipe.outputDirectory))
+$sourcePath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $recipe.Branding.Source))
+$defaultOutput = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $recipe.Branding.OutputDirectory))
 $targetDirectory = if ($OutputDirectory) {
     [System.IO.Path]::GetFullPath($OutputDirectory)
 }
@@ -235,10 +236,10 @@ function Set-OrCheckAsset {
 
 $source = [System.Drawing.Image]::FromFile($sourcePath)
 try {
-    $iconBytes = New-IcoBytes -Source $source -Sizes @($recipe.icon.sizes | ForEach-Object { [int]$_ })
-    Set-OrCheckAsset -FileName $recipe.icon.file -Bytes $iconBytes
+    $iconBytes = New-IcoBytes -Source $source -Sizes @($recipe.Branding.Icon.Sizes | ForEach-Object { [int]$_ })
+    Set-OrCheckAsset -FileName $recipe.Branding.Icon.File -Bytes $iconBytes
 
-    foreach ($asset in $recipe.assets) {
+    foreach ($asset in $recipe.Branding.Assets) {
         $baseWidth = [int]$asset.width
         $baseHeight = [int]$asset.height
         $baseBytes = New-ResizedPngBytes -Source $source -Width $baseWidth -Height $baseHeight
@@ -254,12 +255,12 @@ try {
         }
     }
 
-    foreach ($targetSize in $recipe.targetSizeAsset.sizes) {
+    foreach ($targetSize in $recipe.Branding.TargetSizeAsset.Sizes) {
         $size = [int]$targetSize
         $bytes = New-ResizedPngBytes -Source $source -Width $size -Height $size
-        $stem = $recipe.targetSizeAsset.fileStem
+        $stem = $recipe.Branding.TargetSizeAsset.FileStem
         Set-OrCheckAsset -FileName "$stem.targetsize-$size.png" -Bytes $bytes
-        if ([bool]$recipe.targetSizeAsset.includeUnplated) {
+        if ([bool]$recipe.Branding.TargetSizeAsset.IncludeUnplated) {
             Set-OrCheckAsset -FileName "$stem.targetsize-${size}_altform-unplated.png" -Bytes $bytes
         }
     }

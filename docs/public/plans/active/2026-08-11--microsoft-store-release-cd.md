@@ -1420,8 +1420,8 @@ release, submit to Store or change the D5 mapping without replanning.
 
 | Step | Status | Latest checkpoint/evidence |
 |---|---|---|
-| S1 | `IN_PROGRESS` | Git baseline `VERIFIED` (CP-002); Partner Center confirmation `BLOCKED` (no credentials). |
-| S2 | `NOT_STARTED` | D19 contract verified at plan level only. |
+| S1 | `DONE` | Git baseline `VERIFIED` (CP-002); Partner Center confirmation externally `BLOCKED` (no credentials). |
+| S2 | `DONE` | Schema-1 `Product.props`, shared parser, D5 mapping, branding migration, fixtures and tests pass (CP-003). |
 | S3 | `NOT_STARTED` | Pending S2. |
 | S4 | `NOT_STARTED` | Pending S2/S3. |
 | S5 | `NOT_STARTED` | Pending S2. |
@@ -1431,6 +1431,49 @@ release, submit to Store or change the D5 mapping without replanning.
 | S9 | `NOT_STARTED` | Pending S1–S8. |
 
 ## Checkpoint Ledger
+
+### CP-003 — S2 centralized distribution configuration core complete
+
+- **Plan status:** `IN_PROGRESS`.
+- **Verification state:** `VERIFIED` for S2; S1 Partner Center `BLOCKED`.
+- **Execution branch:** `ci/microsoft-store-release-cd`.
+- **Changes since CP-002 (uncommitted at checkpoint):**
+  - `build/Product.props` expanded to schema 1 (D19): SCHEMA/PRODUCT/STORE/
+    VERSIONING/BRANDING/TOOLING/EXTERNAL property groups plus
+    `EchoStoreArchitecture`, `EchoStoreCapability`, `EchoBrandAsset`,
+    `EchoBrandTargetSizeAsset` and `EchoExternalBinding` items.
+  - `scripts/modules/Echo.ReleaseMetadata.psm1` added: sole XML parser
+    `Get-EchoDistributionConfiguration`, `Get-EchoStoreVersion` (D5),
+    `Compare-EchoVersion`, `Test-EchoStoreVersionMonotonic`,
+    `Resolve-EchoReleaseTag`, `Get-EchoProductPropsSha256`.
+  - `scripts/Test-ProductConfiguration.ps1` delegates to the module and exposes
+    the D19 `-AsJson` stable contract (product/store/branding/tooling/
+    externalBindings).
+  - `scripts/Generate-BrandAssets.ps1` consumes the shared config object.
+  - `scripts/Build-Distributions.ps1` imports the module, guards against
+    `branding.json`, and derives Store version through `Get-EchoStoreVersion`.
+  - `build/branding.json` removed (git rm).
+  - `tests/scripts/Test-StoreReleasePipeline.ps1` and
+    `tests/fixtures/store/Product.*.props` fixtures added.
+- **Validation:**
+  - PowerShell parser: PASS on all four changed/added script/module files.
+  - `Test-StoreReleasePipeline.ps1`: PASS (D5 table, bounds, monotonicity,
+    schema-1 fixture, duplicate/missing/out-of-range/packing-base failures).
+  - `Generate-BrandAssets.ps1 -Check`: PASS (byte-equivalent to checked-in
+    assets — branding migration preserves existing outputs).
+  - `Test-ProductConfiguration.ps1 -AsJson`: contract verified
+    (schema=1, store=0.2.19.0, pfm=..., 2 architectures, CLI pin).
+  - `dotnet msbuild -getProperty`: Product.props import still evaluates
+    (`EchoProductVersion=0.2.0.19`, `EchoStoreVersionPackingBase=256`).
+- **Compliance changes:** R16 → `PARTIAL` (single parser + fixtures pass;
+  duplicate-literal audit and `branding.json` consumer scan pending S8/S9).
+  R3 → `PARTIAL` (D5 function tested; Partner Center monotonicity external).
+- **Conformance:** `CONFORMING`. Local variations: only private helper names
+  and JSON ordering; the exported contract matches D19.
+- **Open deviations:** none.
+- **Next exact action:** S3 — bundle production/validation
+  (`Test-StoreReleaseArtifact.ps1`, bundling in `Build-Distributions.ps1`,
+  `store-build.yml` no-secret manual packaging workflow).
 
 ### CP-002 — Execution baseline established; S2 next
 
