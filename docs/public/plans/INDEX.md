@@ -5,9 +5,7 @@ checkpoints, validation evidence, and handoff information live in each plan.
 
 ## Active
 
-| Plan ID | Title | Status | Area | Updated | Current step | Plan |
-|---|---|---|---|---|---|---|
-| `PLAN-20260811-RELEASE-CD-HARDENING` | Endurecimiento y corrección del release CI/CD de Microsoft Store | `READY` | CI/CD, distribución y procedencia | 2026-08-11 | Milestone 1 — baseline y pruebas de regresión | [Active plan](active/2026-08-11--microsoft-store-release-cd-hardening.md) |
+None.
 
 ## Blocked / Replanning
 
@@ -17,6 +15,7 @@ None.
 
 | Plan ID | Title | Completed | Outcome | Plan |
 |---|---|---|---|---|
+| `PLAN-20260811-RELEASE-CD-HARDENING` | Endurecimiento y corrección del release CI/CD de Microsoft Store | 2026-08-11 | `PLAN_EXECUTED` (offline scope; live Store gates remain external operator steps) | [Archived plan](archive/completed/2026/08/2026-08-11--microsoft-store-release-cd-hardening.md) |
 | `PLAN-20260811-MICROSOFT-STORE-RELEASE-CD` | CI/CD seguro y configuración centralizada de releases hacia Microsoft Store | 2026-08-11 | `PLAN_PARTIALLY_EXECUTED` (implementation complete; live Partner Center confirmation and first submission are operator-gated) | [Archived plan](archive/completed/2026/08/2026-08-11--microsoft-store-release-cd.md) |
 | `PLAN-20260811-RESTORE-BUILD-METADATA` | Restore canonical build metadata | 2026-08-11 | `PLAN_EXECUTED` | [Archived plan](archive/completed/2026/08/2026-08-11--restore-build-metadata.md) |
 | `PLAN-20260811-SOLUTION-RESTORE-ISOLATION` | Isolate product solution restore from skill fixtures | 2026-08-11 | `PLAN_EXECUTED` | [Archived plan](archive/completed/2026/08/2026-08-11--solution-restore-isolation.md) |
