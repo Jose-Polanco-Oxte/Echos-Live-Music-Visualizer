@@ -100,4 +100,44 @@ foreach ($case in @(
     Assert-Throws { Get-EchoDistributionConfiguration -Path $casePath } $case.Contains "configuration fixture $($case.File) must fail closed"
 }
 
+Write-Host '== S5 Store submission state machine ==' -ForegroundColor Cyan
+
+Import-Module (Join-Path $repoRoot 'scripts\modules\Echo.StoreSubmission.psm1') -Force -DisableNameChecking
+
+# Normalization table for recognized Partner Center states.
+foreach ($case in @(
+    @{ Raw = 'Published'; Expected = 'Published' },
+    @{ Raw = 'PendingCommit'; Expected = 'PendingCommit' },
+    @{ Raw = 'published'; Expected = 'Published' },
+    @{ Raw = 'PENDINGCOMMIT'; Expected = 'PendingCommit' },
+    @{ Raw = 'InProgressCertification'; Expected = 'Certification' },
+    @{ Raw = 'PreProcessingFailed'; Expected = 'PreProcessingFailed' },
+    @{ Raw = 'garbage'; Expected = 'Unknown' }
+)) {
+    $normalized = Normalize-EchoStoreState $case.Raw
+    Assert-Equal $case.Expected $normalized "state normalization for '$($case.Raw)'"
+}
+
+# transition verdicts
+$upload = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+Assert-Equal 'upload' $upload.Action 'published -> upload'
+Assert-True $upload.Safe 'published is safe to upload'
+
+$resume = Test-EchoStoreStateSafeToProceed -CurrentState 'PendingCommit' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+Assert-Equal 'commit-resume' $resume.Action 'pendingcommit -> resume'
+Assert-True $resume.Safe 'pendingcommit is safe to resume'
+
+$monitor = Test-EchoStoreStateSafeToProceed -CurrentState 'Certification' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+Assert-Equal 'monitor-only' $monitor.Action 'certification -> monitor'
+Assert-True $monitor.Safe 'certification is safe to monitor'
+
+$monoFail = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.0.0' -LatestPublishedVersion '0.2.0.0'
+Assert-Equal 'fail-monotonic' $monoFail.Action 'equal published target must fail monotonicity'
+Assert-True (-not $monoFail.Safe) 'equal published target is not safe'
+
+$terminalFail = Test-EchoStoreStateSafeToProceed -CurrentState 'CertificationFailed' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+Assert-Equal 'fail-closed' $terminalFail.Action 'terminal failure must fail closed'
+Assert-True (-not $terminalFail.Safe) 'terminal failure is not safe'
+
+Write-Host 'Store submission state machine fixtures: PASS' -ForegroundColor Green
 Write-Host 'Store release pipeline version/configuration fixtures: PASS' -ForegroundColor Green

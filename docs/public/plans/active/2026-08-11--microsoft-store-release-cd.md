@@ -1424,13 +1424,56 @@ release, submit to Store or change the D5 mapping without replanning.
 | S2 | `DONE` | Schema-1 `Product.props`, shared parser, D5 mapping, branding migration, fixtures and tests pass (CP-003). |
 | S3 | `DONE` | x64+ARM64 Store build, deterministic `/bv` bundle and artifact validation pass (CP-004). |
 | S4 | `DONE` | `release.yml` rewritten: exact-SHA checkout, CI gates, ZIP+Store bundle, manifest/checksums, draft→stable via `gh`, attestation, Store dispatch (CP-005). |
-| S5 | `NOT_STARTED` | Pending S2. |
-| S6 | `NOT_STARTED` | Pending S2–S5 and external secrets. |
-| S7 | `NOT_STARTED` | Pending S5. |
+| S5 | `DONE` | Pinned msstore installer, submission state-machine module, submit/status scripts; StoreBroker scripts removed (CP-006). |
+| S6 | `DONE` | `store-publish.yml` rewritten: release-triggered, secretless validate job, environment-scoped submit, state-machine controlled (CP-006). |
+| S7 | `DONE` | `store-status.yml` read-only monitor added (CP-006). |
 | S8 | `NOT_STARTED` | Pending implemented behavior from S3–S7. |
 | S9 | `NOT_STARTED` | Pending S1–S8. |
 
 ## Checkpoint Ledger
+
+### CP-006 — S5/S6/S7 Store CLI adapter, deployment and status monitor
+
+- **Plan status:** `IN_PROGRESS`.
+- **Verification state:** `VERIFIED` for S2–S7 static/offline; S1 Partner
+  Center `BLOCKED`; live Store submission requires operator credentials.
+- **Execution branch:** `ci/microsoft-store-release-cd`.
+- **Changes since CP-005:**
+  - `scripts/Install-MicrosoftStoreCli.ps1` (D7): pinned CLI/archive/runtime/
+    hash read from `Product.props`, publisher-double-check, fail-closed extract,
+    `msstore --version` smoke test, optional .NET 9 SDK side-by-side.
+  - `scripts/modules/Echo.StoreSubmission.psm1`: CLI wrapper,
+    state normalization, D11 transition table, D12 no-commit→verify→commit.
+  - `scripts/Invoke-MicrosoftStoreRelease.ps1` (submit-or-resume /
+    delete-target-draft guarded recovery).
+  - `scripts/Get-MicrosoftStoreReleaseStatus.ps1` (read-only status).
+  - `.github/workflows/store-publish.yml` rewritten (D1–D13): release-triggered
+    dual intake, stable validation, secretless package-validation job, Store
+    environment-scoped submit, concurrency serialization.
+  - `.github/workflows/store-status.yml` added (D13): six-hour schedule,
+    read-only, 90-day sanitized retention.
+  - `scripts/Initialize-StoreBroker.ps1` and `scripts/Submit-StoreUpdate.ps1`
+    removed (C4).
+  - State-machine fixtures added to `tests/scripts/Test-StoreReleasePipeline.ps1`.
+- **Validation:**
+  - PowerShell parser PASS for all new/edited scripts/modules.
+  - `Test-StoreReleasePipeline.ps1` PASS incl. D11 normalization table,
+    transition verdicts (upload/resume/monitor/fail-monotonic/fail-closed).
+  - Offline CLI-invocation harness: configure/get/publish/commit against a fake
+    CLI; exit codes, JSON parsing, state normalization, env isolation/restore
+    verified.
+  - `actionlint` v1.7.12 PASS across all five workflows.
+- **Compliance changes:** R8/R9/R10/R12 → `PARTIAL` (fixtures + audit;
+  live credential flow is operator-gated). R1/R2/R4/R5/R6/R7/R11/R14 → partial
+  on external/live portions.
+- **Conformance:** `CONFORMING`; recovery-mode input shape is a LOCAL_VARIATION
+  of the D11 guard (validated list, default `none`).
+- **Open deviations:** none.
+- **Blockers:** S1 Partner Center confirmation; live Store submission requires
+  real `microsoft-store-production` environment secrets and an authorized
+  stable release.
+- **Next exact action:** S8 — CI/action pinning, `branding.json`/StoreBroker
+  reference cleanup across docs/rules/skill/spec, and `req-traceability`.
 
 ### CP-005 — S4 release orchestration reworked
 

@@ -1,0 +1,63 @@
+name: Microsoft Store Publication Status
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional existing stable release tag (vA.B.C.D) to correlate'
+        required: false
+        type: string
+        default: ''
+
+# Read-only monitor; uses a different concurrency group than production submit.
+concurrency:
+  group: microsoft-store-status
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    name: Query Microsoft Store Submission Status
+    runs-on: windows-2025
+    environment: microsoft-store-production
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup pinned build toolchain
+        uses: ./.github/actions/setup-windows-build
+        with:
+          rust-targets: x86_64-pc-windows-msvc
+
+      - name: Install Pinned Store CLI
+        shell: pwsh
+        run: ./scripts/Install-MicrosoftStoreCli.ps1 -InstallDotnetSdk
+
+      - name: Query Read-Only Submission Status
+        shell: pwsh
+        env:
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $errorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path 'artifacts' -Force | Out-Null
+          $reportPath = if ($env:RELEASE_TAG) { "store-status-$env:RELEASE_TAG.json" } else { 'store-status.json' }
+          ./scripts/Get-MicrosoftStoreReleaseStatus.ps1 -OutFile "artifacts/$reportPath"
+          Get-Content -LiteralPath "artifacts/$reportPath"
+
+      - name: Retain Sanitized Status Report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: store-status-report
+          path: |
+            artifacts/store-status*.json
+          retention-days: 90
+          if-no-files-found: error
