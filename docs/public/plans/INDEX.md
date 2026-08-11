@@ -5,7 +5,9 @@ checkpoints, validation evidence, and handoff information live in each plan.
 
 ## Active
 
-None.
+| Plan ID | Title | Status | Plan |
+|---|---|---|---|
+| None | No active plan | — | — |
 
 ## Blocked / Replanning
 
@@ -15,6 +17,9 @@ None.
 
 | Plan ID | Title | Completed | Outcome | Plan |
 |---|---|---|---|---|
+| `PLAN-20260811-RESTORE-BUILD-METADATA` | Restore canonical build metadata | 2026-08-11 | `PLAN_EXECUTED` | [Archived plan](archive/completed/2026/08/2026-08-11--restore-build-metadata.md) |
+| `PLAN-20260811-SOLUTION-RESTORE-ISOLATION` | Isolate product solution restore from skill fixtures | 2026-08-11 | `PLAN_EXECUTED` | [Archived plan](archive/completed/2026/08/2026-08-11--solution-restore-isolation.md) |
+| `PLAN-20260811-AGENT-ARCHITECTURE-AUDIT` | Audit and sanitize the agent architecture | 2026-08-11 | `PLAN_EXECUTED_WITH_DOCUMENTED_ENVIRONMENT_BLOCKER` | [Archived plan](archive/completed/2026/08/2026-08-11--agent-architecture-audit.md) |
 | `PLAN-20260811-PLAN-SYSTEM-MIGRATION` | Migrate to the persistent two-phase plan system | 2026-08-11 | `PLAN_EXECUTED` | [Archived plan](archive/completed/2026/08/2026-08-11--plan-system-migration.md) |
 
 ## Historical archive

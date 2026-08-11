@@ -33,11 +33,39 @@ remain higher priority than repository instructions.
 
 ## Planning
 
-Non-trivial work uses a persistent two-phase plan lifecycle:
+The persistent plan lifecycle is opt-in and authorization-gated. Task
+complexity alone MUST NOT create or activate a plan.
 
-1. Apply `.agents/skills/implementation-plan-authoring/SKILL.md` to create an
-   implementation-ready plan.
-2. After execution is authorized, apply
+Use the two-phase lifecycle only in one of these cases:
+
+1. The user explicitly asks to create, formalize, or replan an implementation
+   plan. In that case, apply
+   `.agents/skills/implementation-plan-authoring/SKILL.md` and stop after the
+   plan is READY unless the user separately authorizes execution.
+2. The user explicitly asks to execute, implement, apply, or continue a plan
+   that the user or another agent has provided or identified. In that case,
+   apply `.agents/skills/plan-conformance-execution/SKILL.md` to the selected
+   active plan.
+
+For an ordinary request without an explicitly provided execution plan:
+
+- Do not create a plan automatically because the task is non-trivial.
+- Use the relevant direct skills and perform the requested bounded work when
+  it is safe to do so.
+- If the task is too broad or risky to execute safely without a plan, ask the
+  user whether they want to provide/authorize a plan or request plan authoring;
+  do not author or execute one silently.
+
+When a plan is supplied inline or by another agent and execution is explicitly
+authorized, persist it under `docs/public/plans/active/` before execution when
+the repository lifecycle requires a file, preserving its stated scope and
+decisions.
+
+The two-phase lifecycle is therefore:
+
+1. Explicitly requested plan authoring uses
+   `.agents/skills/implementation-plan-authoring/SKILL.md`.
+2. Explicitly authorized execution uses
    `.agents/skills/plan-conformance-execution/SKILL.md` to execute, validate,
    checkpoint, and archive that plan.
 
@@ -77,7 +105,7 @@ Only when explicitly asked to verify project instructions, respond with:
 
 CONTEXT_OK
 
-PIPELINE=./scripts/Build-Distribution.ps1
+    PIPELINE=./scripts/Build-Distributions.ps1
 
 RELEASE_BRANCH=main
 

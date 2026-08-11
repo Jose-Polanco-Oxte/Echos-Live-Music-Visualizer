@@ -1,0 +1,7 @@
+interface:
+  display_name: "Sub-Agents"
+  short_description: "Use for running named sub-agents and delegating tasks to agent definitions"
+  default_prompt: "Use $runner:sub-agents to run a bounded task as a sub-agent. Read SKILL.md, let the model select zero, one or multiple compatible roles, then invoke scripts/run_subagent.py with the selected repeatable --agent arguments (or none) and --prompt. Check references/codex.md before the first Codex run."
+
+policy:
+  allow_implicit_invocation: true

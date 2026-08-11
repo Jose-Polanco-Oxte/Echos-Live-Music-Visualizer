@@ -1,0 +1,8 @@
+[package]
+name = "echo-dsp-offline-benchmark"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+echo_core = { path = "../../../src/core" }

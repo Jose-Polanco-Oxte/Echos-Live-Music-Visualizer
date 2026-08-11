@@ -423,10 +423,14 @@ Aquí tienes la especificación expandida del **Módulo 6**, redactada con un ni
 - **RF6.3.6 Actualizado -- Auto-ocultamiento del overlay:** Tras cuatro (4) segundos sin interacción del usuario, el overlay debe ocultarse y el visualizador debe quedar en primer plano. Cualquier interacción de entrada destinada a recuperar controles debe volver a mostrar el overlay sin modificar el estado del visualizador. El temporizador se suspenderá mientras un control interactivo del overlay esté abierto, tenga foco, se encuentre bajo el puntero o reciba interacción de teclado; en particular, no debe ocultar ni cerrar el selector de dispositivo mientras el usuario lo inspecciona o elige una opción.
 - **RF6.3.7 Nuevo -- Acciones rápidas del carrusel:** El carrusel debe permitir marcar/desmarcar un visualizador como favorito mediante una estrella visible y contener un botón etiquetado "Modo aleatorio". En esta versión el botón sólo comunica la futura función: la edición de la lista aleatoria y su panel de configuración quedan fuera de alcance hasta contar con las especificaciones pendientes.
 
-#### RF6.4 Secuenciador Dinámico y Gestión de Presets -- Actualizado
+#### RF6.4 Estado actual de secuenciación y presets
 
-- **RF6.4.1 Retirado -- Autorrotación y Presets:** Los modos de conmutación autorrotativa, selección aleatoria, ordenamiento manual de itinerario y gestión de presets de rotación han sido retirados de esta versión para eliminar sobre-parametrización.
-- **RF6.4.2 Retirado -- Transición de Fundido Configurable:** Al existir un único efecto activo (RS-EB), las transiciones de fundido y sincronizaciones multivisualizador quedan fuera de alcance.
+- **RF6.4.1 Catálogo ejecutable:** La versión actual permite seleccionar el
+  visualizador disponible desde el catálogo y conserva el estado de RS-EB. No
+  expone un secuenciador automático, una lista de rotación ni un editor de
+  presets de rotación.
+- **RF6.4.2 Transiciones:** El cambio de visualizador disponible no requiere un
+  flujo de fundido configurable ni sincronización entre múltiples efectos.
 
 #### RF6.5 Control de Interfaz e Inmersión a Pantalla Completa
 
@@ -453,7 +457,7 @@ Aquí tienes la especificación expandida del **Módulo 6**, redactada con un ni
 
 #### Supuestos y alcance diferido -- Actualizado 2026-07-29
 
-- El aviso retirado de inicio es el relativo a permisos/capacidades de audio o
+- El inicio no presenta un aviso propio de permisos/capacidades de audio o
   sistema. El aviso fotosensible se conserva durante cinco segundos y no
   presenta permisos ni requiere un botón de aceptación.
 - El carrusel se ubica en la franja inferior de la vista seleccionada. Los
@@ -542,9 +546,8 @@ Utiliza esta interfaz de checklist estructurada cada vez que planifiques, diseñ
 
 Esta versión contiene un único visualizador ejecutable y configurable:
 **RS-EB: Ecualizador de Barras Espectral**. Los visualizadores llamados
-"Ecualizador espejo", "Pulso espectral" y "Malla espectral" se retiran de
-esta versión: no deben registrarse, aparecer como opciones ejecutables del
-catálogo/carrusel/rotación ni compartir configuración con RS-EB.
+"Ecualizador espejo", "Pulso espectral" y "Malla espectral" no forman parte
+del catálogo ejecutable actual ni comparten configuración con RS-EB.
 
 El *layout* **Espejo/Center-Out** definido para RS-EB no constituye un
 visualizador independiente; sigue siendo sólo una disposición geométrica de
@@ -601,20 +604,16 @@ prevenir parpadeo de alta frecuencia.
 3. **Espejo:** crecimiento simétrico bidireccional desde un eje central
    (*Center-Out*), como variante de RS-EB, no como visualizador distinto.
 
-**RF-EQ.5 Parametrización Simplificada de RS-EB -- Actualizado:**
+**RF-EQ.5 Parametrización actual de RS-EB:**
 
-El panel contextual de RS-EB se simplifica para ofrecer únicamente los parámetros
-de **Disposición Geométrica (Layout)**, **Número de Bandas ($N$)** y **Modo de Coloración**
-(Mapeado por Audio / Paleta Personalizada).
+El panel contextual de RS-EB expone los controles observables de **Disposición
+Geométrica (Layout)**, **Número de Bandas ($N$)** y **Modo de Coloración**
+(Mapeado por Audio / Paleta Personalizada). Al seleccionar la paleta
+personalizada, permite editar los colores primario y secundario y aplicarlos a
+las barras. La agrupación espectral que consume el efecto se configura desde
+el servicio del core y no se presenta como un selector adicional en este panel.
 
-- **RF-EQ.5.1 Retirado -- Sobre-parametrización:** Se retiran los controles de
-  espaciado de barras (gap), radio de esquinas (cápsulas), marcadores de picos (peak hold),
-  velocidad de caída de picos, resplandor posterior (glow/bloom) e intensidad, y reflejo
-  en línea base para garantizar un renderizado limpio, directo y de ultra-bajo consumo.
-- **RF-EQ.5.2 Retirado -- Selector de Escala Espectral en UI:** Se retira el control selector
-  de escala espectral de la interfaz gráfica del usuario. El Core mantendrá internamente la
-  agrupación espectral perceptual/logarítmica optimizada (ERB/Log-Octave) como valor por defecto
-  para el ecualizador de barras.
-- **RF-EQ.5.3 Eliminación Física de Componentes Obsoletos:** Se eliminan físicamente del repositorio
-  y de la compilación los archivos no utilizados de efectos y transiciones retiradas:
-  `D3D11SpectralMeshVisualizer.cs`, `SpectralMesh3DMath.cs`, `Win2DSpectralBarVisualizer.cs` y `VisualizerTransitionState.cs`.
+Los nombres de tipos, propiedades internas y archivos históricos no forman
+parte de este requisito funcional; cualquier candidato de revisión o limpieza
+se documenta en el informe de auditoría y no se interpreta como una instrucción
+de modificación del producto.

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Multitask Coordinator"
+  short_description: "Coordinate hierarchical subagent work"
+  default_prompt: "Use $multitask-coordinator to build a task and decision graph, assign hierarchical ownership, materialize owned ephemeral shared memory when needed, dispatch safe ready work, route conflicts, and integrate evidence into a verified result."
+
+policy:
+  allow_implicit_invocation: true
