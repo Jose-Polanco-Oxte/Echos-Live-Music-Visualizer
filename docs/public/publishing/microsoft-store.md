@@ -3,6 +3,12 @@
 This document describes how Echo Visualizer is published to the Microsoft Store,
 from the first manual submission to continuous (automated) delivery.
 
+> **Status (2026-08-11):** The first submission — Store version `0.2.0.0` —
+> has been **certified and published**.
+> Store page: https://apps.microsoft.com/store/detail/9NJMJFH8J616
+> The manual-first-submission step below is complete; updates now use the
+> continuous delivery workflow in section 4.
+
 ## 1. Distribution model
 
 | Channel | Packaging | Version | Automation |
@@ -53,7 +59,9 @@ submission must be created manually in Partner Center:
 
 ## 4. Continuous delivery (after the first publication)
 
-Prerequisites in Partner Center (one time):
+The first submission is published (Store version `0.2.0.0`), so the continuous
+delivery prerequisite is satisfied. The remaining one-time setup in Partner
+Center and this repository:
 
 1. In Partner Center -> Account settings -> User management, associate an Azure
    AD application and assign it the **Manager** role. From that entry, copy the

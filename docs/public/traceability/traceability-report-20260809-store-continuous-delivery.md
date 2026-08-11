@@ -5,6 +5,11 @@
 - **Responsible:** Agent (dev branch)
 - **Status:** IMPLEMENTED AND VERIFIED LOCALLY
 
+> **Update (2026-08-11):** The first Store submission (`0.2.0.0`) was
+> **certified and published** (https://apps.microsoft.com/store/detail/9NJMJFH8J616).
+> The continuous delivery pipeline in this report is now usable for subsequent
+> Store updates.
+
 ## Normative Source
 
 | Requirement ID | Exact Section | Transcribed Formula, Range, Unit, or Rule | Acceptance Criteria |
@@ -29,7 +34,7 @@
 | RF6.1.7 | `store-build.yml` CI run produces Store packages; inspect `AppxManifest.xml` from inside each `.msix`. | Both x64 and arm64 packages must have distinct `ProcessorArchitecture` and identical `Name`/`Publisher`/`Version=A.B.C.0`. | PASS: verified `..._x64.msix` (`ProcessorArchitecture="x64"`) and `..._arm64.msix` (`ProcessorArchitecture="arm64"`), both `Tun4z.EchoVisualizer`, `0.2.0.0`. |
 | RF6.1.7 | `scripts/Build-Distributions.ps1 -Profile Store` validates identity and architecture via `Assert-MsixManifest`. | Nonzero revision or wrong architecture fails the build. | PASS: CI runs `31340423818` completed green. |
 | RF6.1.7 | `actionlint` on `.github/workflows/store-publish.yml`; PowerShell parse of `Submit-StoreUpdate.ps1` and `Initialize-StoreBroker.ps1`. | Any workflow/syntax error fails. | PASS: lint and parse clean. |
-| RF6.1.7 | First submission was created manually in Partner Center (privacy policy URL, `runFullTrust` justification, microphone declaration). | StoreBroker cannot create the first submission; it only updates published ones. | Pending certification; continuous updates become available after the first publication. |
+| RF6.1.7 | First submission was created manually in Partner Center (privacy policy URL, `runFullTrust` justification, microphone declaration). | StoreBroker cannot create the first submission; it only updates published ones. | PASS: first submission published (Store version `0.2.0.0`, 2026-08-11); continuous updates now available. |
 
 ## Deviations or Decisions
 

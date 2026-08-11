@@ -31,6 +31,46 @@ and report that the project pipeline could not be activated.
 System and developer instructions, followed by the user's explicit request,
 remain higher priority than repository instructions.
 
+## Planning
+
+Non-trivial work uses a persistent two-phase plan lifecycle:
+
+1. Apply `.agents/skills/implementation-plan-authoring/SKILL.md` to create an
+   implementation-ready plan.
+2. After execution is authorized, apply
+   `.agents/skills/plan-conformance-execution/SKILL.md` to execute, validate,
+   checkpoint, and archive that plan.
+
+Discover plans through `docs/public/plans/INDEX.md`, then read the selected
+active plan completely. The index is the only plan catalog. Detailed execution
+state, checkpoints, validation evidence, deviations, and handoff state belong
+inside the living plan.
+
+Plans must be implementation-grade, not summaries.
+
+Do not optimize plans for brevity.
+
+Every material step must identify:
+- objective;
+- verified code locations;
+- exact behavioral changes;
+- rationale;
+- dependencies;
+- invariants;
+- validation;
+- completion evidence;
+- allowed executor discretion;
+- replan triggers.
+
+A plan is not complete if another agent would need to rediscover
+architectural or behavioral decisions before implementing it.
+
+Prefer explicit detail over compression when information affects implementation.
+
+Do not invent alternate plan stores, sidecar progress files, or command-based
+plan catalogs. Historical files prefixed `deprecated--` under the plan archive
+are read-only migration artifacts and are never executable plans.
+
 ## Context Verification Contract
 
 Only when explicitly asked to verify project instructions, respond with:

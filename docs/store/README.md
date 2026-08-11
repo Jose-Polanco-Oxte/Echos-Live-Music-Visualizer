@@ -15,10 +15,11 @@ docs/store/
 └── images/                         # Store listing screenshots per release/locale
 ```
 
-## One-time generation (after the FIRST submission is published)
+## One-time generation (first submission published 2026-08-11)
 
 StoreBroker can only update an app that already has at least one published
-submission, so run this once the initial submission leaves certification:
+submission. The first submission (Store version `0.2.0.0`) is now published, so
+the prerequisite is met and you can run the one-time bootstrap:
 
 ```powershell
 # Requires STORE_CLIENT_ID / STORE_CLIENT_SECRET / STORE_TENANT_ID (or interactive)
