@@ -611,6 +611,61 @@ function Assert-PriResources {
     }
 }
 
+function Build-StoreBundle {
+    param(
+        [Parameter(Mandatory)][hashtable]$ArchitecturePackages,
+        [Parameter(Mandatory)][string]$StoreVersion,
+        [Parameter(Mandatory)][string]$MakeAppxPath
+    )
+
+    Write-Stage "Bundling Store MSIX packages (version $StoreVersion)"
+    $stagingRoot = Join-Path $script:ArtifactsRoot '.staging\bundle'
+    Remove-SafeArtifactDirectory $stagingRoot
+    New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
+
+    try {
+        $productVersion = $script:ProductMetadata.Version
+        $bundleName = "EchoVisualizer-$productVersion-msixbundle.msixbundle"
+        $stagingFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -ErrorAction SilentlyContinue)
+        if ($stagingFiles.Count -gt 0) {
+            throw 'Bundle staging directory must be empty before staging MSIX packages.'
+        }
+
+        foreach ($runtimeIdentifier in $ArchitecturePackages.Keys) {
+            $packagePath = $ArchitecturePackages[$runtimeIdentifier]
+            if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf)) {
+                throw ("Store MSIX package is missing for {0}: {1}" -f $runtimeIdentifier, $packagePath)
+            }
+            Copy-Item -LiteralPath $packagePath -Destination (Join-Path $stagingRoot (Split-Path $packagePath -Leaf))
+        }
+
+        $stagedPackages = @(Get-ChildItem -LiteralPath $stagingRoot -Filter '*.msix' -File)
+        if ($stagedPackages.Count -ne 2) {
+            throw "Expected exactly two staged MSIX packages for bundling; found $($stagedPackages.Count)."
+        }
+
+        $outputDirectory = Join-Path $script:ArtifactsRoot 'store'
+        Remove-SafeArtifactDirectory $outputDirectory
+        New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+        $bundlePath = Join-Path $outputDirectory $bundleName
+        # /bv is mandatory so the bundle version is a deterministic derivation
+        # of the Store version rather than an implicit MakeAppx calculation.
+        Invoke-NativeTool $MakeAppxPath @('bundle', '/d', $stagingRoot, '/p', $bundlePath, '/bv', $StoreVersion, '/o')
+        if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
+            throw "MakeAppx did not produce the expected Store bundle: $bundlePath"
+        }
+
+        $bundleHash = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $bundleSize = (Get-Item -LiteralPath $bundlePath).Length
+        Write-Host "Store bundle produced: $bundlePath ($bundleSize bytes)" -ForegroundColor Green
+        Write-Host "Store bundle SHA-256: $bundleHash" -ForegroundColor DarkGray
+        return [pscustomobject]@{ Path = $bundlePath; Sha256 = $bundleHash; SizeBytes = $bundleSize; Name = $bundleName }
+    }
+    finally {
+        Remove-SafeArtifactDirectory $stagingRoot
+    }
+}
+
 function Build-GitHubDistribution {
     param(
         [Parameter(Mandatory)][string]$RuntimeIdentifier,
@@ -1037,16 +1092,28 @@ try {
         }
     }
 
-    $storeBundles = @{}
+    $storePackages = @{}
+    $storeBundleResult = $null
     if ($Profile -in @('Store', 'Both')) {
         foreach ($runtimeIdentifier in $RuntimeIdentifiers) {
-            $storeBundles[$runtimeIdentifier] = Build-StoreDistribution `
+            $storePackages[$runtimeIdentifier] = Build-StoreDistribution `
                 -RuntimeIdentifier $runtimeIdentifier `
                 -Version $StoreVersion `
                 -MakeAppxPath $makeAppxPath `
                 -ManifestMetadata $manifestMetadata `
                 -SigningCertificate $signingCertificate
         }
+        $storeBundleResult = Build-StoreBundle `
+            -ArchitecturePackages $storePackages `
+            -StoreVersion $StoreVersion `
+            -MakeAppxPath $makeAppxPath
+        $artifactValidator = Join-Path $script:RepoRoot 'scripts\Test-StoreReleaseArtifact.ps1'
+        if (-not (Test-Path -LiteralPath $artifactValidator -PathType Leaf)) {
+            throw "Store artifact validator is missing: $artifactValidator"
+        }
+        & $artifactValidator `
+            -BundlePath $storeBundleResult.Path `
+            -ExpectedProductVersion $manifestMetadata.Version | Out-Null
     }
 
     if ($SmokeTest) {
@@ -1055,14 +1122,14 @@ try {
         }
         if ($InstallMsix) {
             Install-AndSmokeTestMsix `
-                -BundlePath $storeBundles['win-x64'] `
+                -BundlePath $storeBundleResult.Path `
                 -ManifestMetadata $manifestMetadata `
                 -ExpectedVersion $StoreVersion
         }
     }
     elseif ($InstallMsix) {
-        Write-Stage "Installing x64 MSIX version $StoreVersion"
-        Add-AppxPackage -Path $storeBundles['win-x64'] -ForceApplicationShutdown -ForceUpdateFromAnyVersion
+        Write-Stage "Installing x64/ARM64 bundle version $StoreVersion"
+        Add-AppxPackage -Path $storeBundleResult.Path -ForceApplicationShutdown -ForceUpdateFromAnyVersion
     }
 
     Write-Host "`nDistribution pipeline completed successfully." -ForegroundColor Green

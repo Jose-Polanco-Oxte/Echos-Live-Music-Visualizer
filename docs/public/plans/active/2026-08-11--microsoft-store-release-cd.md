@@ -1422,7 +1422,7 @@ release, submit to Store or change the D5 mapping without replanning.
 |---|---|---|
 | S1 | `DONE` | Git baseline `VERIFIED` (CP-002); Partner Center confirmation externally `BLOCKED` (no credentials). |
 | S2 | `DONE` | Schema-1 `Product.props`, shared parser, D5 mapping, branding migration, fixtures and tests pass (CP-003). |
-| S3 | `NOT_STARTED` | Pending S2. |
+| S3 | `DONE` | x64+ARM64 Store build, deterministic `/bv` bundle and artifact validation pass (CP-004). |
 | S4 | `NOT_STARTED` | Pending S2/S3. |
 | S5 | `NOT_STARTED` | Pending S2. |
 | S6 | `NOT_STARTED` | Pending S2–S5 and external secrets. |
@@ -1431,6 +1431,41 @@ release, submit to Store or change the D5 mapping without replanning.
 | S9 | `NOT_STARTED` | Pending S1–S8. |
 
 ## Checkpoint Ledger
+
+### CP-004 — S3 deterministic Store bundle and validation complete
+
+- **Plan status:** `IN_PROGRESS`.
+- **Verification state:** `VERIFIED` for S2/S3; S1 Partner Center `BLOCKED`.
+- **Execution branch:** `ci/microsoft-store-release-cd`.
+- **Changes since CP-003 (uncommitted at checkpoint):**
+  - `scripts/Test-StoreReleaseArtifact.ps1` added: reusable no-network bundle
+    validator (MakeAppx unbundle/unpack, identity/publisher/version/arch/
+    capability assertions, optional release-manifest correlation).
+  - `scripts/Build-Distributions.ps1`: `Build-StoreBundle` stages the two
+    per-RID MSIX packages, bundles once with explicit MakeAppx `/bv`/`/o`, names
+    the bundle deterministically (`EchoVisualizer-<A.B.C.D>-msixbundle.msixbundle`),
+    emits hash/size, and calls the artifact validator after bundling.
+  - `.github/workflows/store-build.yml` rewritten as a manual no-secret package
+    validation workflow (windows-2025, pinned actions): build + validate +
+    upload the single bundle.
+- **Validation:**
+  - Full `Build-Distributions.ps1 -Profile Store -RuntimeIdentifiers win-x64,win-arm64`
+    run: win-x64 and win-arm64 MSIX individually built/validated (PE, PRI, ICO,
+    brand assets, manifest), bundled via MakeAppx `/bv 0.2.19.0`, then validated
+    by `Test-StoreReleaseArtifact.ps1` — PASS. Bundle
+    `EchoVisualizer-0.2.0.19-msixbundle.msixbundle` (33,841,597 bytes,
+    SHA-256 `070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e`).
+  - One x64 + one ARM64 inner package confirmed; identity/publisher/version/
+    capabilities matched centralized schema-1 config.
+- **Compliance changes:** R5 → `PARTIAL` (bundle produced locally; GitHub-release
+  attach/submission correlation pending S4/S6). R4 → `PARTIAL` (local identity
+  assertions pass; external Partner Center identity confirmation blocked).
+- **Conformance:** `CONFORMING`. Naming/layout are LOCAL_VARIATION consistent
+  with D4/D6 determinism.
+- **Open deviations:** none.
+- **Next exact action:** S4 — rework `.github/workflows/release.yml` to build
+  the Store bundle within the release, generate release manifest/checksums,
+  publish stable, and dispatch Store CD.
 
 ### CP-003 — S2 centralized distribution configuration core complete
 

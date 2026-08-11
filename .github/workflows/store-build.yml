@@ -2,74 +2,55 @@ name: Microsoft Store Package Build
 
 on:
   workflow_dispatch:
-    inputs:
-      version_override:
-        description: 'Optional four-part product version (A.B.C.D); Store packages are built with revision 0 (A.B.C.0)'
-        required: false
-        type: string
-        default: ''
 
 permissions:
   contents: read
 
 jobs:
-  build-store-package:
-    name: Build Store MSIX Package (${{ matrix.runtime_identifier }})
-    runs-on: windows-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - runtime_identifier: win-x64
-            rust_target: x86_64-pc-windows-msvc
-          - runtime_identifier: win-arm64
-            rust_target: aarch64-pc-windows-msvc
+  build-store-bundle:
+    name: Build and Validate Store Bundle
+    runs-on: windows-2025
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Setup pinned build toolchain (${{ matrix.rust_target }})
+      - name: Setup pinned build toolchain
         uses: ./.github/actions/setup-windows-build
         with:
-          rust-targets: ${{ matrix.rust_target }}
-
-      - name: Resolve Package Version
-        id: package
-        shell: pwsh
-        env:
-          VERSION_OVERRIDE: ${{ inputs.version_override }}
-        run: |
-          $version = $env:VERSION_OVERRIDE.Trim()
-          $metadata = ./scripts/Test-ProductConfiguration.ps1 -AsJson | ConvertFrom-Json
-          if (-not $version) {
-            $version = $metadata.Version
-          }
-          if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
-            throw "Package version must use A.B.C.D: $version"
-          }
-          foreach ($component in $version.Split('.')) {
-            if ([int]$component -gt 65535) {
-              throw "Package version components must be between 0 and 65535: $version"
-            }
-          }
-          $storeVersion = ($version.Split('.')[0..2] -join '.') + '.0'
-          "version=$storeVersion" >> $env:GITHUB_OUTPUT
+          rust-targets: >-
+            x86_64-pc-windows-msvc
+            aarch64-pc-windows-msvc
 
       - name: Compile and Validate Store MSIX Bundle
         shell: pwsh
         run: >-
           ./scripts/Build-Distributions.ps1
           -Profile Store
-          -RuntimeIdentifiers ${{ matrix.runtime_identifier }}
-          -PackageVersion ${{ steps.package.outputs.version }}
+          -RuntimeIdentifiers win-x64,win-arm64
           -SkipTests
 
-      - name: Upload Store MSIX Artifacts
-        uses: actions/upload-artifact@v7
+      - name: Validate Store Bundle Artifact
+        shell: pwsh
+        run: |
+          $storeVersion = ./scripts/Test-ProductConfiguration.ps1 -AsJson |
+            ConvertFrom-Json | ForEach-Object { $_.store.versioning.storeVersion }
+          $productVersion = ./scripts/Test-ProductConfiguration.ps1 -AsJson |
+            ConvertFrom-Json | ForEach-Object { $_.product.version }
+          $bundle = Get-ChildItem 'artifacts/store/*.msixbundle' -File |
+            Select-Object -First 1
+          if (-not $bundle) {
+            throw 'Store bundle was not produced under artifacts/store/.'
+          }
+          ./scripts/Test-StoreReleaseArtifact.ps1 `
+            -BundlePath $bundle.FullName `
+            -ExpectedProductVersion $productVersion
+
+      - name: Upload Store Bundle Artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: EchoVisualizer-Store-MSIX-${{ steps.package.outputs.version }}-${{ matrix.runtime_identifier }}
+          name: EchoVisualizer-Store-Bundle
           path: |
-            artifacts/store-test/${{ matrix.runtime_identifier }}/**/*.msixbundle
-            artifacts/store-test/${{ matrix.runtime_identifier }}/**/*.msix
-            artifacts/store-test/${{ matrix.runtime_identifier }}/**/*.msixupload
+            artifacts/store/*.msixbundle
+            artifacts/store/*.zip
+          if-no-files-found: error
