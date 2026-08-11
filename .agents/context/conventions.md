@@ -32,8 +32,9 @@
   README badge, changelog, and Win32 manifest remain explicit formats but must
   pass `scripts/Test-ProductConfiguration.ps1`.
 - **Generated branding**: Files under `src/ui/Assets/` are generated from
-  `docs/public/Echo-Logo-Large.png` and `build/branding.json`. Change the source
-  or recipe, run `scripts/Generate-BrandAssets.ps1`, and verify with `-Check`;
+  `docs/public/Echo-Logo-Large.png` and the branding recipes in
+  `build/Product.props`. Change the source or recipe, run
+  `scripts/Generate-BrandAssets.ps1`, and verify with `-Check`;
   do not hand-edit individual scale or target-size projections.
 - **Common build entrypoint**: Local and CI distribution builds use
   `scripts/Build-Distributions.ps1`; direct publish commands are diagnostic

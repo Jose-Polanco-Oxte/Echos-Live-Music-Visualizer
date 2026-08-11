@@ -7,7 +7,7 @@
 - **DSP Core (`src/core/`)**: Rust (`x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`), `cargo`. Real-time audio capture, STFT windowing, ERB filterbanks, feature extraction (RMS, Centroid, Onset, LUFS), Master Peak Scaler, FFI ABI v1/v2.
 - **UI & Presentation (`src/ui/`)**: C# / WinUI 3, .NET 8 / Windows SDK, Direct3D 11 / Win2D rendering engine.
 - **Testing & Benchmarks (`tests/`)**: Rust unit/integration tests, C# xUnit test suite (`tests/EchoVisualizer.Tests`), offline performance benchmarks.
-- **Packaging & Delivery**: Validated unpackaged and MSIX builds via `scripts/Build-Distributions.ps1`. Official product metadata lives in `build/Product.props`; deterministic branding projections are defined by `build/branding.json` and `scripts/Generate-BrandAssets.ps1`.
+- **Packaging & Delivery**: Validated unpackaged and MSIX builds via `scripts/Build-Distributions.ps1`. All versioned product and distribution configuration lives in `build/Product.props` (schema 1); deterministic branding projections are defined by its branding recipes and `scripts/Generate-BrandAssets.ps1`.
 
 ## 3. Directory Layout & Module Ownership
 - `src/core/`: Exclusive Rust domain. WASAPI capture, resampling, STFT, energy bands, LUFS measurement, Master Peak scaler, ABI memory layouts.

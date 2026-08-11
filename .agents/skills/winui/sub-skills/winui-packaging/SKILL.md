@@ -100,7 +100,18 @@ jobs:
 2. **Age ratings** — complete the questionnaire in Partner Center
 3. **Screenshots** — capture at 1366x768 minimum resolution
 4. **Privacy policy** — required for apps that access internet or user data
-5. **Submit:** upload the signed `.msix` / `.msixbundle` produced by `winapp package` via [Microsoft Partner Center](https://partner.microsoft.com/dashboard) — Apps and games → your app → Packages. Microsoft Store submission is browser-based; there is no first-party CLI submit command yet.
+5. **Automated submission:** Echo Visualizer publishes through the
+   release-driven Microsoft Store Developer CLI (`msstore`) pipeline.
+   Distribution and Store configuration live only in `build/Product.props`;
+   CLI coordinates and credential binding names come from
+   `Get-EchoDistributionConfiguration`. See
+   `docs/public/publishing/microsoft-store.md` for the authoritative release,
+   setup, recovery and monitoring procedure. Never embed credentials in this
+   skill or in documentation.
+6. **Manual submission** in the Partner Center dashboard remains available, but
+   the repository's continuous-delivery path is the release-triggered Store
+   workflow; do not instruct agents to bypass it with independent
+   version/package overrides.
 
 ### Troubleshooting
 

@@ -141,11 +141,13 @@ the repository.
 .\scripts\Generate-BrandAssets.ps1 -Check
 ```
 
-`build/Product.props` is the canonical official version and product identity.
-The package manifest, Rust package, README badge, and changelog are validated
-projections. Brand assets are deterministically generated from
-`docs/public/Echo-Logo-Large.png` and `build/branding.json`; regenerate them
-with `Generate-BrandAssets.ps1` after an intentional source or recipe change.
+`build/Product.props` is the single versioned source of product identity,
+distribution and branding configuration (schema 1). The package manifest, Rust
+package, README badge, changelog and generated assets are validated projections.
+Brand assets are deterministically generated from
+`docs/public/Echo-Logo-Large.png` and the branding recipes in `Product.props`;
+regenerate them with `Generate-BrandAssets.ps1` after an intentional source or
+recipe change.
 
 ### Microphone Privacy and Theme Behavior
 

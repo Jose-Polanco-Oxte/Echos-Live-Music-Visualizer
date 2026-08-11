@@ -126,27 +126,36 @@ The Microsoft Store is governed by the same strict user-authorization rules as
 release tagging: do not publish, enable rollouts, or submit to the Store unless
 the user explicitly requests it. The following rules apply to Store packages:
 
-1. **Store version rule:** The package version must use revision zero
-   (`A.B.C.0`), derived from the canonical product version's first three
-   components. Never submit a package with a nonzero revision.
-2. **Per-architecture packages:** Produce one unsigned, framework-dependent
-   `.msix` per runtime identifier (x64 and ARM64). Never submit two
-   `.msixbundle`/`.appxbundle` packages applicable to the same device set.
-   The submission profile is `scripts/Build-Distributions.ps1 -Profile Store`.
-3. **First submission is manual:** The Store Submission API can only update an
-   existing app. The first submission must be created in Partner Center with:
-   the reserved identity (`Tun4z.EchoVisualizer`), the public privacy-policy
-   URL, justification for `runFullTrust` and `microphone`, age rating, listing,
-   and testing notes.
-4. **Continuous updates:** Use `.github/workflows/store-publish.yml` with
-   GitHub Secrets `STORE_APP_ID`, `STORE_CLIENT_ID`, `STORE_CLIENT_SECRET`,
-   `STORE_TENANT_ID`, plus the StoreBroker data in `docs/store/` (never commit
-   credentials). Prefer `dry_run` before a live submission.
-5. **Increasing Store versions:** The Store version must strictly increase
-   across submissions. Pass `version_override` with an increased `A.B.C` when
-   the derived `A.B.C.0` would repeat the previous submission.
-   The canonical guidance is `docs/public/publishing/microsoft-store.md` and
-   `docs/store/README.md`.
-6. **Store release is independent from GitHub Releases:** Publishing to the
-   Store does not create or push a Git tag, and a GitHub release does not submit
-   to the Store.
+1. **Single configuration source:** All versioned product and distribution
+   configuration, including Store Product ID, Package Family Name, supported
+   architectures, artifact type, D5 packing base, branding recipes and the
+   pinned Store CLI coordinates, lives only in `build/Product.props` and is
+   read through `Get-EchoDistributionConfiguration`
+   (`scripts/modules/Echo.ReleaseMetadata.psm1`). Do not introduce a second
+   configuration store.
+2. **Deterministic Store version:** The Store version derives deterministically
+   and monotonically from the canonical product version (`A.B.C.D → A.B.S.0`,
+   packing base 256) and always ends in revision zero. Never pass an independent
+   `version_override` or mutable `EchoStoreVersion`; equal or lower remote
+   versions fail before upload.
+3. **Single multi-architecture bundle:** Production submits exactly one unsigned
+   `.msixbundle` containing one x64 and one ARM64 `ProcessorArchitecture`
+   package sharing identity, publisher, version and capabilities. Reverting to
+   loose per-architecture packages after adopting the bundle requires replanning.
+4. **Authorization boundary:** A stable, published GitHub Release is the
+   production authorization that lets the Store workflow attempt a submission.
+   The workflow rejects draft/prerelease/edited states and never accepts an
+   arbitrary package path or version on its own.
+5. **State-safe automation:** Before any mutating Store command, a preflight
+   queries and classifies Partner Center state; the pipeline is idempotent,
+   never deletes a non-target submission, differentiates
+   prepared/uploaded/committed/certifying/published/failed, and uses a
+   read-only status workflow for multi-day certification monitoring.
+6. **Credentials:** Partner Center secrets live only in the
+   `microsoft-store-production` GitHub Environment with the binding names and
+   purpose declared in `build/Product.props`; never commit, upload or print
+   credential values.
+7. **Store release is release-driven, not independent:** Publishing to the
+   Store follows the release workflow; a GitHub release dispatches it. A manual
+   first-time setup and the first live release remain explicitly authorized
+   operations documented in `docs/public/publishing/microsoft-store.md`.

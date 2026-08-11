@@ -1,29 +1,48 @@
 # Microsoft Store Publishing Guide
 
-This document describes how Echo Visualizer is published to the Microsoft Store,
-from the first manual submission to continuous (automated) delivery.
+This document describes how Echo Visualizer is published to the Microsoft Store
+through the release-driven pipeline: a stable GitHub Release is the production
+authorization boundary, and an automated Store workflow submits the exact
+validated artifact to the application `9NJMJFH8J616`.
 
 > **Status (2026-08-11):** The first submission — Store version `0.2.0.0` —
 > has been **certified and published**.
 > Store page: https://apps.microsoft.com/store/detail/9NJMJFH8J616
-> The manual-first-submission step below is complete; updates now use the
-> continuous delivery workflow in section 4.
+>
+> The release-driven Store CD replaces the older StoreBroker manual/continuous
+> flow. Partner Center remains the authoritative external state; the manual
+> first-time setup below is still required exactly once.
 
 ## 1. Distribution model
 
 | Channel | Packaging | Version | Automation |
 | --- | --- | --- | --- |
 | GitHub Releases | unpackaged, self-contained ZIP (x64/ARM64) | `A.B.C.D` (e.g. `0.2.0.19`) | `release.yml` on tag |
-| Microsoft Store | packaged, framework-dependent MSIX, one `.msix` per architecture | `A.B.C.0` (revision must be 0) | `store-publish.yml` |
+| Microsoft Store | one unsigned `.msixbundle` (one x64 + one ARM64 inner `.msix`) | `A.B.S.0` (D5 transform, revision 0) | `store-publish.yml` triggered by the release |
 
 The Microsoft Store requires the package version **revision to be zero**
-(`A.B.C.0`). The pipeline always derives the Store version from the first three
-components of the declared product version, so a submission is never rejected
-for a nonzero revision.
+(`A.B.C.0`). The D5 transform maps the four-part product version `A.B.C.D` onto
+the Store version `A.B.S.0` with `S = C * 256 + D` and a packing base of 256
+declared in `build/Product.props`. The transform is injective and monotonic, so
+releases such as `0.2.0.19` and `0.2.0.20` never collide.
 
-## 2. Product identity
+## 2. Single configuration source
 
-Reserved identity (Partner Center -> Product management -> Product identity):
+All versioned product and distribution configuration lives in
+`build/Product.props` (schema 1): product identity and version, Store Product
+ID, Package Family Name, artifact type `msixbundle`, x64/ARM64 architecture
+records, target device family, minimum/tested OS versions, capabilities,
+branding recipes, the pinned Microsoft Store Developer CLI coordinates and the
+GitHub Environment/secret binding names. The only programmatic parser is
+`Get-EchoDistributionConfiguration`; the stable machine interface is
+`scripts/Test-ProductConfiguration.ps1 -AsJson`.
+
+Never edit a second configuration file and never introduce a `distribution.json`
+or `Distribution.props`. `Package.appxmanifest`, `Cargo.toml`, README content
+and `src/ui/Assets` are validated projections of `Product.props`.
+
+Store product identity (Partner Center -> Product management -> Product
+identity) must match the configured values:
 
 | Field | Value |
 | --- | --- |
@@ -33,90 +52,76 @@ Reserved identity (Partner Center -> Product management -> Product identity):
 | Package Family Name | `Tun4z.EchoVisualizer_ga3qxkah0cx76` |
 | Store ID | `9NJMJFH8J616` |
 
-These values are declared in `src/ui/Package.appxmanifest` and synchronized in
-`build/Product.props` (`EchoPackageIdentityName`, `EchoPackagePublisher`,
-`EchoPublisherDisplayName`). `scripts/Test-ProductConfiguration.ps1` validates
-that the manifest, product metadata, branding, and distribution agree.
+`scripts/Test-ProductConfiguration.ps1` validates that the manifest, product
+metadata, branding and distribution agree with the centralized configuration.
 
-## 3. First submission (manual)
+## 3. First-time external setup (one-time)
 
-The Store Submission API can only update an existing app, so the **first**
-submission must be created manually in Partner Center:
+The automated pipeline requires an Entra application and a GitHub Environment;
+no secret value is ever committed.
 
-1. Build the Store packages:
-   - Local: `scripts/Build-Distributions.ps1 -Profile Store -RuntimeIdentifiers win-x64,win-arm64 -SkipTests`
-   - Or dispatch `store-build.yml` (`workflow_dispatch`) with `version_override`.
-2. In Partner Center -> your app -> Submissions -> Packages, upload the two
-   **`.msix`** files (`..._x64.msix` and `..._arm64.msix`) together. Do **not**
-   upload the `Dependencies\` folder, and never upload two `.msixbundle`
-   files (architecture-neutral bundles collide).
-3. Complete the questionnaire:
-   - Privacy policy: https://jose-polanco-oxte.github.io/Echos-Live-Music-Visualizer/privacy/
-   - `runFullTrust`: justify that the WinUI 3 desktop app runs a full-trust
-     Win32 process for WASAPI capture, native Rust DSP, and GPU rendering.
-   - Age rating, capabilities (microphone), listing, screenshots, testing notes.
-4. Submit for certification.
+1. Confirm the product is `9NJMJFH8J616`, free, already published, and accepts
+   MSIX package updates. Record the latest published Store version and any
+   pending submission; the next automated release must map above it.
+2. In Partner Center -> Account settings, associate the Microsoft Entra tenant.
+3. Create a dedicated automation app registration (not a personal/global
+   administrator identity) and assign it the Partner Center **Manager** role
+   that Microsoft's current Store CLI GitHub Actions guidance requires.
+4. Record Tenant ID, Seller ID and Client ID in the operations inventory.
+5. Create a client credential with the shortest practical lifetime (target
+   under 12 months); record expiry and rotation reminder.
+6. In GitHub create Environment `microsoft-store-production` and add the four
+   required secrets with the names declared in `build/Product.props`
+   `externalBindings.requiredSecrets`:
+   `PARTNER_CENTER_TENANT_ID`, `PARTNER_CENTER_SELLER_ID`,
+   `PARTNER_CENTER_CLIENT_ID`, `PARTNER_CENTER_CLIENT_SECRET`. If optional ZIP
+   signing is enabled, add `SIGNING_CERTIFICATE_BASE64` and
+   `SIGNING_CERTIFICATE_PASSWORD` separately.
+7. Restrict the Environment deployment branches/tags to the repository's
+   release policy. Optional reviewers may be enabled by the owner.
+8. Verify the default `GITHUB_TOKEN` is read-only and workflows grant only the
+   explicit job permissions they require.
+9. Run the read-only status workflow and confirm authentication and product
+   identity/version correlation before the first live submission.
 
-## 4. Continuous delivery (after the first publication)
+## 4. Publishing an update (automated)
 
-The first submission is published (Store version `0.2.0.0`), so the continuous
-delivery prerequisite is satisfied. The remaining one-time setup in Partner
-Center and this repository:
+1. Merge a new stable release to `main`, create and push the version tag
+   `vA.B.C.D` following `.agents/rules/git.md`.
+2. `release.yml` dereferences the exact tag SHA, requires successful CI for that
+   SHA, builds the GitHub ZIPs and the Store bundle from the same SHA, generates
+   the release manifest and checksums, publishes the stable GitHub Release, and
+   explicitly dispatches `store-publish.yml`.
+3. `store-publish.yml` re-reads the published stable release, verifies the exact
+   tag/SHA/version/manifest/asset digest, validates the downloaded bundle, then
+   enters the `microsoft-store-production` Environment and queries Partner
+   Center. The fail-closed state machine either reports already published,
+   resumes a pending commit, uploads a new no-commit draft then commits, or
+   stops without mutation.
+4. Certification may take up to three business days; `store-status.yml`
+   (scheduled every six hours, read-only) follows it to a terminal state and
+   retains sanitized reports for 90 days.
 
-1. In Partner Center -> Account settings -> User management, associate an Azure
-   AD application and assign it the **Manager** role. From that entry, copy the
-   **Tenant ID** and **Client ID**, and create a **Client secret**.
-2. Configure the repository GitHub Secrets:
+## 5. Recovery operations
 
-   | Secret | Value |
-   | --- | --- |
-   | `STORE_APP_ID` | Store ID (`9NJMJFH8J616`) |
-   | `STORE_CLIENT_ID` | Azure AD application (client) ID |
-   | `STORE_CLIENT_SECRET` | Azure AD application secret |
-   | `STORE_TENANT_ID` | Azure AD tenant ID |
-
-3. Generate the StoreBroker data snapshot (only needed if you want automated
-   listing/metadata updates in addition to packages):
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts/Initialize-StoreBroker.ps1 -AppId <StoreId>
-   ```
-
-   See `docs/store/README.md` for the layout and commit the generated config
-   and PDPs (credentials stay empty; secrets are injected at runtime).
-
-## 5. Publishing an update
-
-Dispatch **Microsoft Store Continuous Delivery** (`store-publish.yml`):
-
-| Input | Meaning |
+| Situation | Correct action |
 | --- | --- |
-| `version_override` | Optional `A.B.C.D`; defaults to the canonical product version. The Store version used is always `A.B.C.0`. |
-| `target_publish_mode` | `Immediate`, `Manual`, `SpecificDate`, or `Default` (reuse previous). |
-| `publish_date` | Local date/time when `SpecificDate`. |
-| `rollout_percentage` | Optional gradual rollout `0-100`. |
-| `release` | Optional label for the PDP/Images snapshot. |
-| `notes_for_certification` | Optional notes for testers. |
-| `dry_run` | Build the payload and print the plan **without** calling the API. |
+| Missing/expired secret or 401/403 | Correct or rotate the Environment secret/role, run the read-only status, then rerun the same release tag. |
+| CLI archive/checksum/version mismatch | Inspect the official release/checksum; update the pin only in a reviewed `Product.props` change and rerun tests. |
+| Store target `<=` latest published | Choose a new canonical product version whose D5 mapping is greater; never override the Store version. |
+| Different pending submission exists | Inspect Partner Center; let it finish/cancel, or authorize and use the guarded `delete-target-draft` recovery only for the exact matched target. |
+| Certification failure | Fetch the certification report in Partner Center, fix, and ship a higher product/Store version. |
 
-The workflow:
-1. Resolves the Store version (`A.B.C.0`).
-2. Builds and validates both architecture-specific `.msix` packages.
-3. Installs StoreBroker and submits the update (packages replaced, publish mode
-   and rollout applied, auto-commit).
-
-> The Store version must always be **higher** than the previously published one.
-> Because only the revision is zeroed, keep the first three components
-> increasing across releases (for example pass `version_override=0.2.1.0` for
-> the next submission). If a future submission would map to the same
-> `A.B.C.0`, Partner Center rejects it.
+`delete-target-draft` deletes only a `PendingCommit` draft with the exact target
+version and is a destructive administrative operation; it never deletes a
+committed or certifying submission.
 
 ## 6. Troubleshooting
 
 | Symptom | Cause / fix |
 | --- | --- |
-| "Packages ... same package full name ... Neutral" | Two bundles were uploaded; submit the two architecture-specific `.msix` files instead. |
-| "revision number ... not zero" | Store version was not `A.B.C.0`; the pipeline now forces it. |
-| `runFullTrust` warning | Expected for WinUI 3 desktop apps; justify in Properties (section 3). |
-| `Update-ApplicationSubmission` "no published submission" | StoreBroker requires at least one previously published submission; do the first one manually. |
-| "Missing GitHub Secrets" | Add `STORE_APP_ID`, `STORE_CLIENT_ID`, `STORE_CLIENT_SECRET`, `STORE_TENANT_ID`. |
+| "Expected Store asset ... missing" | The release was published without the Store bundle/manifest; a new stable release is required. |
+| "Store preflight failed closed" | Partner Center state is not safe to mutate; inspect the status report and resolve remotely. |
+| `runFullTrust` warning | Expected for WinUI 3 desktop apps; justified in Properties. |
+| "Missing Partner Center credentials" | The four Environment secrets are not configured; complete section 3. |
+| Certification pending for days | Normal; `store-status.yml` reports `IN_PROGRESS` and never claims publication. |

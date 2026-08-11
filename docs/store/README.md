@@ -1,56 +1,50 @@
-# Store Broker Data (`docs/store/`)
+# Microsoft Store Configuration Contract (`docs/store/`)
 
-This directory feeds the Microsoft Store continuous delivery pipeline
-(`.github/workflows/store-publish.yml`). It is intentionally versioned **without
-credentials**; authentication is injected at submission time from GitHub
-Actions Secrets.
+This directory documents the **non-secret** configuration contract for the
+Microsoft Store release pipeline. It no longer contains StoreBroker data; all
+versioned configuration lives in `build/Product.props` and all credentials live
+only in the GitHub Environment `microsoft-store-production`.
 
 ## Layout
 
 ```text
 docs/store/
-├── StoreBrokerConfiguration.json   # Generated once (see below); no secrets
-├── StoreBrokerConfiguration.template.json
-├── pdp/                            # Store listing metadata (PDP.xml per locale)
-└── images/                         # Store listing screenshots per release/locale
+├── README.md                          # This contract (no secrets)
 ```
 
-## One-time generation (first submission published 2026-08-11)
+No `StoreBrokerConfiguration.json`, PDP snapshots, screenshots or images are
+committed here. `scripts/Initialize-StoreBroker.ps1` and the associated
+configuration template have been removed.
 
-StoreBroker can only update an app that already has at least one published
-submission. The first submission (Store version `0.2.0.0`) is now published, so
-the prerequisite is met and you can run the one-time bootstrap:
+## What is authoritative
 
-```powershell
-# Requires STORE_CLIENT_ID / STORE_CLIENT_SECRET / STORE_TENANT_ID (or interactive)
-powershell -ExecutionPolicy Bypass -File scripts/Initialize-StoreBroker.ps1 -AppId <StoreId>
-```
-
-That script:
-1. Installs/imports StoreBroker.
-2. Authenticates with Partner Center.
-3. Generates `StoreBrokerConfiguration.json`.
-4. Snapshots the current listing into `pdp/<lang>/PDP.xml`.
-
-Then:
-- Set `imagesRootPath` to `docs/store/images` and drop screenshots at
-  `docs/store/images/<release>/<lang-code>/*.png` following the StoreBroker
-  layout.
-- Keep `clientId` / `tenantId` / `clientSecret` empty in the committed config.
-  Credentials come from the environment at submission time.
-
-## GitHub Secrets required by `store-publish.yml`
-
-| Secret | Value |
+| Concern | Location |
 | --- | --- |
-| `STORE_APP_ID` | Store ID from Partner Center -> App identity (e.g. `9NJMJFH8J616`) |
-| `STORE_CLIENT_ID` | Azure AD app Client ID (StoreBroker user) |
-| `STORE_CLIENT_SECRET` | Azure AD app Client secret |
-| `STORE_TENANT_ID` | Azure AD tenant ID |
+| Product identity, version, PFN, Store ID | `build/Product.props` schema 1 |
+| Store artifact type, architectures, capabilities, OS bounds | `build/Product.props` |
+| Branding source/recipes and generated outputs | `build/Product.props` + `scripts/Generate-BrandAssets.ps1` |
+| Pinned Store CLI coordinates | `build/Product.props` (`tooling.msstore`) |
+| Secret binding names and GitHub Environment | `build/Product.props` (`externalBindings`) |
+| Programmatic parser | `scripts/modules/Echo.ReleaseMetadata.psm1` |
+| Stable machine interface | `scripts/Test-ProductConfiguration.ps1 -AsJson` |
+| Release + submission procedure | `docs/public/publishing/microsoft-store.md` |
+
+`Package.appxmanifest`, `src/core/Cargo.toml`, README content and
+`src/ui/Assets` are validated **projections** of `Product.props` and are not
+independent configuration entry points.
+
+## Credentials
+
+Partner Center secrets are never committed. They are stored only as GitHub
+Environment secrets named in `Product.props`:
+`PARTNER_CENTER_TENANT_ID`, `PARTNER_CENTER_SELLER_ID`,
+`PARTNER_CENTER_CLIENT_ID`, `PARTNER_CENTER_CLIENT_SECRET`, plus the optional
+`SIGNING_CERTIFICATE_BASE64` and `SIGNING_CERTIFICATE_PASSWORD` for ZIP signing.
 
 ## Version rule
 
-Microsoft Store requires the package version revision to be zero (`A.B.C.0`).
-The pipeline derives the Store version from the declared product version and
-produces one architecture-specific `.msix` per runtime identifier (x64 and
-arm64). Upload them together; never upload two bundles.
+The Store version derives deterministically from the product version
+(`A.B.C.D → A.B.S.0`, packing base 256) and always ends in revision zero. The
+production artifact is a single unsigned `.msixbundle` with one x64 and one
+ARM64 inner package; never submit loose per-architecture packages or two bundles
+after the bundle flow is active.

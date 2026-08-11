@@ -21,27 +21,64 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Install actionlint
+      - name: Install Pinned actionlint
         shell: pwsh
         run: |
-          winget install --id rhysd.actionlint --exact --source winget `
-            --accept-source-agreements --accept-package-agreements --silent
-
-          $actionlintFiles = @(
-            Get-ChildItem -Path "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" `
-              -Filter actionlint.exe -Recurse -File -ErrorAction SilentlyContinue
-          )
-          if ($actionlintFiles.Count -ne 1) {
-            throw "Expected exactly one actionlint executable, found $($actionlintFiles.Count)."
+          $version = '1.7.12'
+          $sha256 = '6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9'
+          $asset = "actionlint_${version}_windows_amd64.zip"
+          $url = "https://github.com/rhysd/actionlint/releases/download/v$version/$asset"
+          $archive = Join-Path $env:RUNNER_TEMP $asset
+          Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $sha256) {
+            throw "actionlint digest mismatch. Expected $sha256, found $actual."
           }
-
-          $actionlintFiles[0].DirectoryName >> $env:GITHUB_PATH
+          $toolDir = Join-Path $env:RUNNER_TEMP 'actionlint'
+          New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
+          Expand-Archive -LiteralPath $archive -DestinationPath $toolDir -Force
+          $toolDir >> $env:GITHUB_PATH
 
       - name: Run actionlint
         shell: pwsh
         run: actionlint
+
+      - name: Audit Distribution Literal Duplicates
+        shell: pwsh
+        run: |
+          $configJson = ./scripts/Test-ProductConfiguration.ps1 -AsJson | ConvertFrom-Json
+          $literals = @(
+            @{ Label = 'store.productId'; Value = [string]$configJson.store.productId },
+            @{ Label = 'store.packageFamilyName'; Value = [string]$configJson.store.packageFamilyName },
+            @{ Label = 'tooling.msstore.version'; Value = [string]$configJson.tooling.msstore.version },
+            @{ Label = 'tooling.msstore.assetName'; Value = [string]$configJson.tooling.msstore.assetName },
+            @{ Label = 'tooling.msstore.sha256'; Value = [string]$configJson.tooling.msstore.sha256 }
+          ) | Where-Object { $_.Value }
+          # Operational code paths that must consume configuration rather than
+          # hard-code it: product scripts (excluding the shared module, which
+          # defines the schema), workflows and composite actions.
+          $targets = @()
+          $targets += Get-ChildItem 'scripts' -Recurse -File -Include *.ps1 -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch 'modules\\' }
+          $targets += Get-ChildItem '.github' -Recurse -File -Include *.yml,*.yaml -ErrorAction SilentlyContinue
+          $violations = @()
+          foreach ($file in $targets) {
+            $rel = $file.FullName.Replace((Get-Location).Path + '\', '')
+            foreach ($entry in $literals) {
+              $found = Select-String -LiteralPath $file.FullName -SimpleMatch -Pattern $entry.Value -ErrorAction SilentlyContinue
+              foreach ($match in $found) {
+                $violations += ("$($entry.Label)='$($entry.Value)' at $rel`:$($match.LineNumber)")
+              }
+            }
+          }
+          $violations = $violations | Sort-Object -Unique
+          if ($violations.Count -gt 0) {
+            $violations | ForEach-Object { Write-Host "DIST-LITERAL: $_" }
+            throw "Configurable distribution literals must not be duplicated in operational scripts/workflows; read them from build/Product.props."
+          }
+          Write-Host 'Distribution literal audit: PASS'
 
   verify:
     name: Test, Publish and Validate Distributions
@@ -49,7 +86,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup pinned build toolchain
         uses: ./.github/actions/setup-windows-build

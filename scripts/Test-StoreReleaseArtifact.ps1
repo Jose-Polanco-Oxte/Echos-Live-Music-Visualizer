@@ -148,10 +148,14 @@ try {
         if ($ExpectedProductVersion -and $manifestProductVersion -ne $ExpectedProductVersion) {
             throw "Release manifest product version '$manifestProductVersion' does not match '$ExpectedProductVersion'."
         }
-        $expectedFilename = "EchoVisualizer-$manifestProductVersion-msixbundle.msixbundle"
-        $manifestAssets = @($manifestReview.assets | ForEach-Object { $_.filename })
-        if ($manifestAssets -notcontains $expectedFilename) {
-            throw "Release manifest does not list store asset '$expectedFilename'."
+        $bundleFileName = Split-Path $bundleFull -Leaf
+        $storeAssets = @($manifestReview.assets | Where-Object { $_.mediaRole -eq 'store-bundle' })
+        if ($storeAssets.Count -eq 0) {
+            throw 'Release manifest does not list a store-bundle asset.'
+        }
+        $storeAssetNames = @($storeAssets | ForEach-Object { $_.filename })
+        if ($storeAssetNames -notcontains $bundleFileName) {
+            throw "Release manifest store-bundle asset does not match downloaded bundle '$bundleFileName'."
         }
     }
 

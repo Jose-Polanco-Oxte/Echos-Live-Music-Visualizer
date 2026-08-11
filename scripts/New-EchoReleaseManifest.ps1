@@ -55,9 +55,10 @@ $assetRecords = @(
         $fileName = Split-Path $full -Leaf
         $byteSize = (Get-Item -LiteralPath $full).Length
         $sha = (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant()
+        $artifactType = $config.Store.ArtifactType
         $mediaRole = switch -Regex ($fileName) {
             '\.zip$' { if ($fileName -match 'arm64') { 'github-zip-arm64' } else { 'github-zip-x64' } }
-            '\.msixbundle$' { 'store-bundle' }
+            ("\.$([regex]::Escape($artifactType))$") { 'store-bundle' }
             'release-manifest\.json$' { 'release-manifest' }
             'SHA256SUMS\.txt$' { 'checksums' }
             default { 'other' }

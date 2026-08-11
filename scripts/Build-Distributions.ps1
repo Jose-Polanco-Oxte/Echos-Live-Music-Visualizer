@@ -113,7 +113,9 @@ function ConvertTo-StoreVersion {
     # build S = (C * PackingBase) + D is derived by the shared module so the
     # mapping stays monotonic and injective for A.B.C.D releases.
     $packingBase = $script:ProductMetadata.PackingBase
-    if (-not $packingBase) { $packingBase = 256 }
+    if (-not $packingBase) {
+        throw 'Store version packing base must be provided by build/Product.props; no fallback literal is permitted.'
+    }
     return (Get-EchoStoreVersion -ProductVersion $Version -PackingBase $packingBase)
 }
 
@@ -265,6 +267,7 @@ function Get-ProductMetadata {
         Win32AssemblyManifestVersion = $metadata.Product.Win32AssemblyManifestVersion
         PackingBase = $metadata.Store.Versioning.PackingBase
         StoreVersion = $metadata.Store.Versioning.StoreVersion
+        ArtifactType = $metadata.Store.ArtifactType
     }
 }
 
@@ -625,7 +628,9 @@ function Build-StoreBundle {
 
     try {
         $productVersion = $script:ProductMetadata.Version
-        $bundleName = "EchoVisualizer-$productVersion-msixbundle.msixbundle"
+        $artifactType = $script:ProductMetadata.ArtifactType
+        if (-not $artifactType) { $artifactType = 'msixbundle' }
+        $bundleName = "EchoVisualizer-$productVersion-$artifactType.$artifactType"
         $stagingFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -ErrorAction SilentlyContinue)
         if ($stagingFiles.Count -gt 0) {
             throw 'Bundle staging directory must be empty before staging MSIX packages.'

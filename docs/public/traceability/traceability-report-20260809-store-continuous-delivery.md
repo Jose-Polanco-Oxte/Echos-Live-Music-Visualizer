@@ -9,6 +9,13 @@
 > **certified and published** (https://apps.microsoft.com/store/detail/9NJMJFH8J616).
 > The continuous delivery pipeline in this report is now usable for subsequent
 > Store updates.
+>
+> **Historical (2026-08-11):** This report documents the superseded StoreBroker
+> flow. The current release-driven pipeline and the centralized
+> `build/Product.props` configuration are described in
+> `docs/public/traceability/traceability-report-20260811-store-release-cd.md`
+> and `docs/public/publishing/microsoft-store.md`. StoreBroker is no longer part
+> of the active repository contract.
 
 ## Normative Source
 
