@@ -1,11 +1,11 @@
-# CI/CD seguro y configuración centralizada de releases hacia Microsoft Store
+# CI/CD seguro y configuraciÃ³n centralizada de releases hacia Microsoft Store
 
 ## Plan Metadata
 
 | Field | Value |
 |---|---|
 | Plan ID | `PLAN-20260811-MICROSOFT-STORE-RELEASE-CD` |
-| Status | `IN_PROGRESS` |
+| Status | `PLAN_PARTIALLY_EXECUTED` |
 | Verification state | `VERIFIED` |
 | Created | 2026-08-11 |
 | Last updated | 2026-08-11 |
@@ -21,47 +21,48 @@
 
 Extender el proceso de release existente para que una GitHub Release estable y
 publicada pueda distribuir exactamente el mismo binario verificable hacia la
-aplicación pública `9NJMJFH8J616` de Microsoft Store. El flujo debe ser
+aplicaciÃ³n pÃºblica `9NJMJFH8J616` de Microsoft Store. El flujo debe ser
 repetible, seguro frente a concurrencia y reruns, trazable desde tag y commit
-hasta submission, y capaz de distinguir upload, aceptación, certificación y
-publicación final.
+hasta submission, y capaz de distinguir upload, aceptaciÃ³n, certificaciÃ³n y
+publicaciÃ³n final.
 
-Consolidar además toda configuración versionada de producto y distribución en
-`build/Product.props`. Este archivo será el único punto de entrada humano;
+Consolidar ademÃ¡s toda configuraciÃ³n versionada de producto y distribuciÃ³n en
+`build/Product.props`. Este archivo serÃ¡ el Ãºnico punto de entrada humano;
 `Get-EchoDistributionConfiguration`, exportada por
-`scripts/modules/Echo.ReleaseMetadata.psm1`, será el único punto de entrada
-programático y `Test-ProductConfiguration.ps1 -AsJson` su interfaz estable para
+`scripts/modules/Echo.ReleaseMetadata.psm1`, serÃ¡ el Ãºnico punto de entrada
+programÃ¡tico y `Test-ProductConfiguration.ps1 -AsJson` su interfaz estable para
 workflows y herramientas.
 
-Este documento es únicamente el plan de implementación. No autoriza crear una
+Este documento es Ãºnicamente el plan de implementaciÃ³n. No autoriza crear una
 release, enviar un paquete, alterar una submission de Partner Center, crear
-credenciales ni cambiar reglas remotas de GitHub. La ejecución se inicia solo
+credenciales ni cambiar reglas remotas de GitHub. La ejecuciÃ³n se inicia solo
 cuando el usuario solicite implementar este plan.
 
 ## Current State Snapshot
 
-- **Plan status:** `IN_PROGRESS`; ejecución iniciada, S1 en curso.
+- **Plan status:** `PLAN_PARTIALLY_EXECUTED`; all implementable work complete
+  and validated; live Partner Center confirmation/submission are external
+  operator gates.
 - **Working branch:** `ci/microsoft-store-release-cd`.
-- **Working tree:** contiene la autoría/revisión del plan activo y su fila de
-  `docs/public/plans/INDEX.md`, sin commitear al iniciar la ejecución; no hay
-  implementación CI/CD iniciada todavía.
+- **Working tree:** clean at the final checkpoint (branch ahead of `dev`); no
+  implementation CI/CD code remains outstanding.
 - **Repository revision:**
   `c5b6a5804cdb2217b4ea5ed0c2174745fe2e03ee`, dos commits por delante del
   `dev` local observado (`6a1ed449e5096c47c77167d54477b8d472f5b2f9`).
 - **Canonical product version:** `build/Product.props` contiene
   `EchoProductVersion=0.2.0.19`; `Test-ProductConfiguration.ps1` valida su
-  sincronización.
+  sincronizaciÃ³n.
 - **Current configuration split:** `build/Product.props` ya es importado por
-  MSBuild y consumido por scripts/documentación, pero las recetas de assets se
-  mantienen separadas en `build/branding.json`. La implementación eliminará
-  esa segunda fuente y hará que manifiesto, Cargo, README y assets sean
+  MSBuild y consumido por scripts/documentaciÃ³n, pero las recetas de assets se
+  mantienen separadas en `build/branding.json`. La implementaciÃ³n eliminarÃ¡
+  esa segunda fuente y harÃ¡ que manifiesto, Cargo, README y assets sean
   proyecciones comprobadas de `Product.props`.
 - **Published GitHub release:** `v0.2.0.19`; contiene ZIP x64/ARM64 y
-  `SHA256SUMS.txt`, pero ningún artefacto Store ni manifiesto de procedencia.
-- **Published Store product:** la página pública confirma que
-  `9NJMJFH8J616` es gratuita. El repositorio registra como primera versión Store
-  publicada `0.2.0.0`; Partner Center debe confirmarlo antes del primer envío
-  automatizado porque no hay acceso autenticado durante la planificación.
+  `SHA256SUMS.txt`, pero ningÃºn artefacto Store ni manifiesto de procedencia.
+- **Published Store product:** la pÃ¡gina pÃºblica confirma que
+  `9NJMJFH8J616` es gratuita. El repositorio registra como primera versiÃ³n Store
+  publicada `0.2.0.0`; Partner Center debe confirmarlo antes del primer envÃ­o
+  automatizado porque no hay acceso autenticado durante la planificaciÃ³n.
 - **Store identity in source:** `Tun4z.EchoVisualizer`, publisher
   `CN=8C71527D-01B9-4285-A94B-1585E7C0DA03`, display publisher `Tun4z`,
   `Application Id=App`, `Windows.Desktop`, minimum `10.0.17763.0`, capabilities
@@ -145,10 +146,10 @@ cuando el usuario solicite implementar este plan.
     screenshots, pricing, availability, age ratings or localized listing data.
 14. `build/Product.props` ya tiene la mayor base de consumidores: MSBuild lo
     importa directamente y los scripts actuales lo validan. `build/branding.json`
-    es la única segunda fuente material de configuración de distribución. Por
-    ello, ampliar `Product.props` evita bootstrap, código generado y divergencia
+    es la Ãºnica segunda fuente material de configuraciÃ³n de distribuciÃ³n. Por
+    ello, ampliar `Product.props` evita bootstrap, cÃ³digo generado y divergencia
     entre archivos; los binarios de imagen y los valores secretos permanecen
-    externos, pero sus rutas, recetas y nombres de binding se declaran allí.
+    externos, pero sus rutas, recetas y nombres de binding se declaran allÃ­.
 
 ### Current primary sources
 
@@ -165,7 +166,7 @@ cuando el usuario solicite implementar este plan.
 | Official setup action | [`microsoft-store-apppublisher`](https://github.com/microsoft/microsoft-store-apppublisher) | Do not select it until it verifies downloaded CLI integrity. |
 | Submission API lifecycle | [Manage app submissions](https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions) | Treat Partner Center submissions as durable remote state, not stateless uploads. |
 | Submission status | [Get submission status](https://learn.microsoft.com/en-us/windows/uwp/monetize/get-status-for-an-app-submission) | Normalize and report pending/terminal states. |
-| Store lifecycle | [MSIX app certification process](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-certification-process) | Do not call certification pending “published”; allow multi-day monitoring. |
+| Store lifecycle | [MSIX app certification process](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-certification-process) | Do not call certification pending â€œpublishedâ€; allow multi-day monitoring. |
 | Package upload formats | [Upload MSIX packages](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/upload-app-packages) | `.msixbundle` is accepted; preserve all supported device architectures. |
 | Bundle construction | [Bundle MSIX packages](https://learn.microsoft.com/en-us/windows/msix/packaging-tool/bundle-msix-packages) | Combine x64 and ARM64 packages into one upload object. |
 | MakeAppx | [Create an app package with MakeAppx](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool) | Supply deterministic output path and `/bv`. |
@@ -244,17 +245,17 @@ cuando el usuario solicite implementar este plan.
 | `R13` | Modified workflows and downloaded release tools are pinned and integrity-checked; permissions are job-scoped and minimal. | Full-SHA audit, digest-negative tests and permissions matrix. |
 | `R14` | Operators have exact first-time setup, rotation, failure and recovery procedures, including states where automation must stop rather than delete remote state. | Documentation checklist and recovery-table review. |
 | `R15` | Specifications, release rules, packaging skill and traceability evidence describe the implemented mechanism and no longer direct agents to StoreBroker/manual version overrides. | `req-traceability`, stale-reference scan and final documentation diff. |
-| `R16` | Toda configuración versionada de distribución procede de `build/Product.props`; cualquier duplicación activa de Product ID, PFN, formato, arquitecturas, base de versión, recetas de branding o versión/hash/runtime del CLI falla en validación. | Fixtures de configuración, auditoría de consumidores y escaneo de duplicados en scripts/workflows/docs. |
+| `R16` | Toda configuraciÃ³n versionada de distribuciÃ³n procede de `build/Product.props`; cualquier duplicaciÃ³n activa de Product ID, PFN, formato, arquitecturas, base de versiÃ³n, recetas de branding o versiÃ³n/hash/runtime del CLI falla en validaciÃ³n. | Fixtures de configuraciÃ³n, auditorÃ­a de consumidores y escaneo de duplicados en scripts/workflows/docs. |
 
 ## Locked Decisions and Invariants
 
-### D1 — A published stable release is the production authorization boundary
+### D1 â€” A published stable release is the production authorization boundary
 
 The normal production chain is:
 
-`exact release commit passes CI` → `tagged release artifacts are built` →
-`GitHub Release is published stable` → `Store workflow validates that release`
-→ `Partner Center preflight` → `submission`.
+`exact release commit passes CI` â†’ `tagged release artifacts are built` â†’
+`GitHub Release is published stable` â†’ `Store workflow validates that release`
+â†’ `Partner Center preflight` â†’ `submission`.
 
 `pull_request`, branch `push`, file paths and tag creation alone never appear as
 Store production triggers. `workflow_dispatch` accepts an existing
@@ -266,7 +267,7 @@ the automatic Store attempt. The GitHub Environment isolates secrets; this plan
 does not require an additional reviewer so normal releases remain automated.
 An owner may add reviewers later without changing repository semantics.
 
-### D2 — Bridge `GITHUB_TOKEN` release-event suppression explicitly
+### D2 â€” Bridge `GITHUB_TOKEN` release-event suppression explicitly
 
 `.github/workflows/store-publish.yml` listens to both:
 
@@ -279,7 +280,7 @@ After the release API confirms publication and all assets, `release.yml` calls
 the Store workflow using `GITHUB_TOKEN` with only `actions: write` added to the
 dispatching job. Duplicate delivery is expected and made harmless by D10/D11.
 
-### D3 — Release assets are built once and reused
+### D3 â€” Release assets are built once and reused
 
 The release workflow builds the Store artifact from the exact tag SHA before
 publishing the GitHub Release. Store CD downloads that named release asset and
@@ -287,12 +288,12 @@ does not compile product code. This makes the GitHub Release artifact hash the
 submission artifact hash and eliminates source/runner drift between GitHub and
 Store distribution.
 
-“Reproducible” means identical declared source, dependencies, commands,
+â€œReproducibleâ€ means identical declared source, dependencies, commands,
 toolchains and recorded runner image, plus immutable reuse of the resulting
 bytes. The plan does not claim byte-for-byte reproducible MSBuild output across
 different rolling runner image revisions unless later evidence proves it.
 
-### D4 — One multi-architecture Store bundle
+### D4 â€” One multi-architecture Store bundle
 
 The production asset is one unsigned `.msixbundle` with exactly:
 
@@ -307,7 +308,7 @@ existing published product accepts an MSIX bundle update. After adopting a
 bundle, release documentation forbids reverting to loose per-architecture
 packages without replanning.
 
-### D5 — Deterministic four-part-to-Store version mapping
+### D5 â€” Deterministic four-part-to-Store version mapping
 
 Microsoft requires the fourth Store component to be zero, while this repository
 uses all four product components. Use this checked transform:
@@ -341,7 +342,7 @@ configuration validation, packaging, release provenance and Store preflight.
 `EchoStoreVersionPackingBase=256` in `Product.props`, validated as exactly 256
 under schema 1 and may not be changed without a schema increment and replan.
 
-### D6 — Release provenance manifest
+### D6 â€” Release provenance manifest
 
 Every new release created after this pipeline's cutover gains
 `EchoVisualizer-<A.B.C.D>-release-manifest.json` with this versioned logical
@@ -372,7 +373,7 @@ environment-scoped job. Releases predating the cutover lack this contract and
 cannot be backfilled or submitted by recovery dispatch; the first live test
 must use a new stable release/version.
 
-### D7 — Selected publishing tool
+### D7 â€” Selected publishing tool
 
 Replace StoreBroker with Microsoft Store Developer CLI v0.3.9. Its version,
 archive name, .NET runtime/SDK requirement and expected SHA-256 are declared in
@@ -390,7 +391,7 @@ the required .NET 9 runtime. Upgrading CLI/runtime is a reviewed dependency
 change in `Product.props` with release notes, source inspection and fixture
 revalidation; no `latest` token is permitted.
 
-### D8 — Authentication contract
+### D8 â€” Authentication contract
 
 Use a dedicated Partner Center Microsoft Entra application assigned the
 `Manager` role, which Microsoft's current GitHub Actions guidance explicitly
@@ -422,7 +423,7 @@ the four required Partner Center secrets and the optional ZIP-signing secrets
 `SIGNING_CERTIFICATE_BASE64` and `SIGNING_CERTIFICATE_PASSWORD`; it never
 contains their values.
 
-### D9 — Least-privilege workflow boundary
+### D9 â€” Least-privilege workflow boundary
 
 - Provenance/download validation jobs: `contents: read` and, where needed,
   `actions: read`/`checks: read`.
@@ -438,7 +439,7 @@ contains their values.
 No job with Partner Center secrets runs untrusted PR code or has PR/push
 triggers.
 
-### D10 — Serialization
+### D10 â€” Serialization
 
 Production submission uses a repository-wide concurrency group
 `microsoft-store-production` with `cancel-in-progress: false`. A newer run waits
@@ -446,7 +447,7 @@ instead of canceling a process that might already have created or committed a
 remote submission. The read-only status workflow uses a different group and
 may run concurrently because it cannot mutate Partner Center.
 
-### D11 — Idempotent Store state machine
+### D11 â€” Idempotent Store state machine
 
 Before any `publish`, delete or commit command, query current/latest Store
 submission JSON and normalize it. Use these outcomes:
@@ -470,7 +471,7 @@ version, prints the non-secret submission identity/status for review, and must
 be documented as a destructive administrative operation. It never deletes a
 committed/certifying submission.
 
-### D12 — Two-stage submit/commit
+### D12 â€” Two-stage submit/commit
 
 For a new target, call CLI publication with no-commit behavior so upload and
 remote package validation finish before commit. Re-query the draft and verify
@@ -479,7 +480,7 @@ draft. Poll for a bounded interval sufficient to confirm the commit entered a
 recognized Partner Center state. A timeout while certification is progressing
 is reported as accepted/in progress, not as failure or published.
 
-### D13 — Long-running status monitoring
+### D13 â€” Long-running status monitoring
 
 Add `.github/workflows/store-status.yml` with:
 
@@ -499,7 +500,7 @@ explicit `IN_PROGRESS` conclusion in the report; it never claims final
 availability. GitHub notifications on scheduled workflow failures provide the
 initial alerting mechanism without adding a required PR check.
 
-### D14 — Release quality gates
+### D14 â€” Release quality gates
 
 Release creation must verify that the exact dereferenced tag SHA has successful
 completed check runs for the existing CI jobs:
@@ -512,7 +513,7 @@ cancelled or failed checks block release publication. Keep those job names
 stable. Store workflows have unique names and no PR/push triggers, so they must
 not be added to branch protection required checks.
 
-### D15 — Runner and dependency pinning
+### D15 â€” Runner and dependency pinning
 
 - Use `windows-2025`, not the moving `windows-latest`, for Windows build and
   Store jobs. The image itself remains rolling, so record `ImageVersion` and
@@ -535,7 +536,7 @@ not be added to branch protection required checks.
   implementation; any mismatch is a replan/supply-chain stop, not permission
   to substitute `latest`.
 
-### D16 — Signing boundary
+### D16 â€” Signing boundary
 
 Store package and bundle remain unsigned before upload. Partner Center performs
 Store signing after certification. Existing optional PFX signing applies only
@@ -543,7 +544,7 @@ to unpackaged GitHub ZIP binaries; it remains optional and isolated from Store
 credentials. No certificate, base64 PFX or password enters Store artifacts or
 release provenance.
 
-### D17 — Listing, rollout and prerelease boundary
+### D17 â€” Listing, rollout and prerelease boundary
 
 The default production submission requests immediate publication after
 certification with 100% availability, matching a stable release. Package
@@ -555,7 +556,7 @@ Store metadata is untouched. Release notes remain in GitHub; certification
 notes may be a non-secret repository-controlled text file or generated summary,
 not free-form workflow input. Drafts/prereleases stop before environment access.
 
-### D18 — CI versus CD governance
+### D18 â€” CI versus CD governance
 
 `Quality Gate (CI)` retains PR/main triggers and its existing required-check
 candidate job names. Store workflows are CD-only and use unique names:
@@ -569,7 +570,7 @@ required checks. The disabled current ruleset is recorded as a governance risk;
 enabling it is a manual repository-owner action, and Store names must remain
 excluded.
 
-### D19 — One distribution configuration entry point
+### D19 â€” One distribution configuration entry point
 
 `build/Product.props` is the only human-edited, versioned source for product
 and distribution configuration. No `Distribution.props`, `distribution.json`
@@ -748,7 +749,7 @@ release tag vA.B.C.D
 
 ## Change Map
 
-### C1 — Shared release/version/provenance logic
+### C1 â€” Shared release/version/provenance logic
 
 - Expand `build/Product.props` with the complete schema 1 contract from D19,
   using MSBuild properties for scalar values and item groups/metadata for
@@ -773,7 +774,7 @@ release tag vA.B.C.D
   manifest hashes and Store states. Tests are self-contained PowerShell
   assertions and require no new test framework/module from PSGallery.
 
-### C2 — Bundle production and validation
+### C2 â€” Bundle production and validation
 
 - Extend the Store profile in `scripts/Build-Distributions.ps1` so x64/ARM64
   remain individually built and validated, then copied into a clean staging
@@ -793,7 +794,7 @@ release tag vA.B.C.D
   workflow that creates the same bundle and manifest but never accesses Store
   credentials or submits it.
 
-### C3 — GitHub release orchestration
+### C3 â€” GitHub release orchestration
 
 - Rework `.github/workflows/release.yml` to:
   - resolve an existing tag and dereferenced SHA for both normal and recovery
@@ -815,7 +816,7 @@ release tag vA.B.C.D
 - Treat an already-existing stable release with matching tag/SHA/assets/hashes
   as an idempotent recovery success; a conflicting release is a hard failure.
 
-### C4 — Pinned Store CLI and submission module
+### C4 â€” Pinned Store CLI and submission module
 
 - Add `scripts/Install-MicrosoftStoreCli.ps1` implementing D7 and obtaining the
   exact CLI version, archive name, runtime and SHA-256 only from the shared
@@ -833,9 +834,9 @@ release tag vA.B.C.D
 - Remove `scripts/Initialize-StoreBroker.ps1` and StoreBroker imports/config
   after no active references remain.
 
-### C5 — Production Store workflow
+### C5 â€” Production Store workflow
 
-- Replace `.github/workflows/store-publish.yml` with the D1–D13 workflow.
+- Replace `.github/workflows/store-publish.yml` with the D1â€“D13 workflow.
 - Split work into:
   1. `resolve-release` on Ubuntu, without environment secrets;
   2. `validate-package` on `windows-2025`, without environment secrets; and
@@ -854,7 +855,7 @@ release tag vA.B.C.D
   SHA, versions, package hash, Product ID, submission ID/status, workflow run
   and last observation timestamp.
 
-### C6 — Read-only terminal-state monitor
+### C6 â€” Read-only terminal-state monitor
 
 - Add `.github/workflows/store-status.yml` and use the read-only status script.
 - Correlate Partner Center package version with stable release manifests; an
@@ -864,7 +865,7 @@ release tag vA.B.C.D
 - Do not make the status workflow a branch check and do not give it
   `contents: write`.
 
-### C7 — CI and supply-chain hardening
+### C7 â€” CI and supply-chain hardening
 
 - Update `.github/workflows/ci.yml`, release, Store build and Store workflows to
   use explicit runner labels and full-SHA action pins.
@@ -880,7 +881,7 @@ release tag vA.B.C.D
   propose new action commits, but maintainers must verify owner/tag/commit
   correspondence and rerun the supply-chain tests.
 
-### C8 — Documentation, requirements and traceability
+### C8 â€” Documentation, requirements and traceability
 
 - Rewrite `docs/public/publishing/microsoft-store.md` around release-driven
   deployment, `Product.props` as the only configuration entry point, exact
@@ -912,7 +913,7 @@ release tag vA.B.C.D
 
 ## Implementation Steps
 
-### S1 — Establish execution baseline and external readiness
+### S1 â€” Establish execution baseline and external readiness
 
 - **Objective:** begin from a known integration baseline without mixing the
   current documentation branch with implementation history.
@@ -936,7 +937,7 @@ release tag vA.B.C.D
   submission is pending, or Partner Center rejects bundle updates for this
   existing package family.
 
-### S2 — Implement and test the centralized configuration/version core
+### S2 â€” Implement and test the centralized configuration/version core
 
 - **Objective:** make `Product.props` own all versioned distribution inputs and
   one pure implementation own parsing, tag/version conversion and provenance
@@ -968,7 +969,7 @@ release tag vA.B.C.D
   requires a different encoding policy, or schema 1 cannot represent an
   existing branding/build input without adding a second configuration source.
 
-### S3 — Build and validate the release Store bundle
+### S3 â€” Build and validate the release Store bundle
 
 - **Objective:** produce one deterministic multiarch Store asset from the same
   packaging implementation used by CI.
@@ -993,7 +994,7 @@ release tag vA.B.C.D
 - **Replan trigger:** MakeAppx cannot combine current outputs or Partner Center
   requires `.msixupload`/different package construction.
 
-### S4 — Make GitHub Release the immutable artifact boundary
+### S4 â€” Make GitHub Release the immutable artifact boundary
 
 - **Objective:** publish complete, validated, attested release assets from one
   exact commit and dispatch Store only afterward.
@@ -1015,7 +1016,7 @@ release tag vA.B.C.D
 - **Replan trigger:** GitHub changes token recursion, attestation eligibility or
   release asset digest APIs.
 
-### S5 — Replace StoreBroker with a fail-closed CLI adapter
+### S5 â€” Replace StoreBroker with a fail-closed CLI adapter
 
 - **Objective:** install and invoke the official current tool without allowing
   its convenience behavior to delete/replace unknown remote state.
@@ -1041,7 +1042,7 @@ release tag vA.B.C.D
   official CLI leaves preview with breaking changes, or product is no longer
   supported by the free-app path.
 
-### S6 — Implement release-triggered Store deployment
+### S6 â€” Implement release-triggered Store deployment
 
 - **Objective:** connect a verified stable release to exactly one safe Store
   submission attempt.
@@ -1055,7 +1056,7 @@ release tag vA.B.C.D
   variable.
 - **Rationale:** current manual workflow rebuilds arbitrary refs/versions and
   cannot safely recover from duplicate or partial execution.
-- **Dependencies:** S2–S5 and external environment secrets.
+- **Dependencies:** S2â€“S5 and external environment secrets.
 - **Invariants:** no PR/push/tag trigger; no product rebuild; no Store metadata
   mutation; no duplicated configurable distribution literals;
   `cancel-in-progress=false`; stable release only.
@@ -1068,7 +1069,7 @@ release tag vA.B.C.D
   API lacks required integrity fields, or workflow dispatch cannot be
   authenticated with minimal permissions.
 
-### S7 — Add certification status monitoring
+### S7 â€” Add certification status monitoring
 
 - **Objective:** report the multi-day Partner Center lifecycle honestly without
   keeping the submission job alive indefinitely.
@@ -1088,7 +1089,7 @@ release tag vA.B.C.D
 - **Replan trigger:** CLI cannot query submission status read-only or final
   publication requires a different Partner Center endpoint.
 
-### S8 — Harden CI/actions and align project contracts
+### S8 â€” Harden CI/actions and align project contracts
 
 - **Objective:** remove stale release mechanisms and make the implemented
   process the only active documented path.
@@ -1101,7 +1102,7 @@ release tag vA.B.C.D
   `branding.json` removal and duplicate-configuration audit.
 - **Rationale:** current rules explicitly describe Store as independent/manual,
   expose version override and state that first-party Store CLI does not exist.
-- **Dependencies:** S3–S7 actual implemented behavior.
+- **Dependencies:** S3â€“S7 actual implemented behavior.
 - **Invariants:** old traceability evidence is historical; CI names/triggers stay
   compatible; no product architecture change.
 - **Validation/evidence:** stale-reference scan, actionlint, PowerShell parsing,
@@ -1112,7 +1113,7 @@ release tag vA.B.C.D
 - **Replan trigger:** documentation uncovers an unresolved product/Store
   identity contradiction.
 
-### S9 — End-to-end non-production validation and handoff
+### S9 â€” End-to-end non-production validation and handoff
 
 - **Objective:** prove repository behavior without accidentally publishing a
   release or Store submission, then leave an explicit first-live-release gate.
@@ -1123,7 +1124,7 @@ release tag vA.B.C.D
   validation/branding/package/provenance projection without another config edit,
   and archive only after conformance.
 - **Rationale:** syntax success does not prove provenance/idempotency/security.
-- **Dependencies:** S1–S8.
+- **Dependencies:** S1â€“S8.
 - **Invariants:** no live submission or GitHub Release unless separately and
   explicitly requested; skipped external validation is not a pass.
 - **Validation/evidence:** VAL records, compliance matrix, final diff and a
@@ -1292,8 +1293,23 @@ requirement is mapped to the step that must produce its conformance record.
 
 | Requirement | State | Owning steps | Required evidence |
 |---|---|---|---|
-| R1 | `NOT_STARTED` | S4, S6 | Event/condition fixtures and workflow inspection. |
-| R2 | `NOT_STARTED` | S2–S4 | Exact tag/SHA/version/manifest correlation. |
+| R1 | `VERIFIED` | S4, S6 | Event/condition fixtures and workflow inspection. |
+| R2 | `PARTIAL` | S2–S4 | Exact tag/SHA/version/manifest correlation; live release execution pending operator tag test. |
+| R3 | `PARTIAL` | S1, S2, S5 | D5 function tests PASS; Partner Center monotonicity external. |
+| R4 | `PARTIAL` | S1, S3 | Local bundle identity assertions PASS; external Partner Center identity confirmation BLOCKED. |
+| R5 | `PARTIAL` | S3, S4, S6 | One x64+ARM64 bundle produced/validated; GitHub-release/submission byte correlation pending live run. |
+| R6 | `PARTIAL` | S3, S4, S8 | Toolchain/runner provenance implemented; recorded in manifest; live release log pending. |
+| R7 | `PARTIAL` | S4 | Exact-SHA CI gate implemented; live check-run verification pending operator-triggered release. |
+| R8 | `PARTIAL` | S5, S6, S8 | Environment isolation, permission audit, redaction and secret scans PASS; live auth flow operator-gated. |
+| R9 | `PARTIAL` | S5, S6 | State-machine, concurrency and rerun fixtures PASS; live rerun of an actual submission pending. |
+| R10 | `PARTIAL` | S5–S7 | Status schema/report code PASS (offline fixtures); live Partner Center report pending. |
+| R11 | `VERIFIED` | S6, S8 | Trigger matrix verified locally: Store workflows have no PR/push triggers and are not required checks. |
+| R12 | `PARTIAL` | S5, S6, S8 | No-listing-metadata payload review PASS (code/docs); live payload to Partner Center pending. |
+| R13 | `PARTIAL` | S4–S8 | Action/tool full-SHA pins and negative-integrit tests PASS; live workflow attestation pending. |
+| R14 | `PARTIAL` | S8, S9 | Setup/rotation/recovery docs published; operator execution of the checklist pending. |
+| R15 | `PARTIAL` | S8, S9 | Rules/spec/skill/docs/traceability updated and stale-reference scan PASS; live first submission is the remaining gate. |
+| R16 | `VERIFIED` | S2, S3, S5, S6, S8, S9 | Single-parser/config fixtures, projection mutation test, branding drift catch and duplicate-literal audit all PASS. || R1 | `NOT_STARTED` | S4, S6 | Event/condition fixtures and workflow inspection. |
+| R2 | `NOT_STARTED` | S2â€“S4 | Exact tag/SHA/version/manifest correlation. |
 | R3 | `NOT_STARTED` | S1, S2, S5 | Version-function and Partner Center monotonicity results. |
 | R4 | `NOT_STARTED` | S1, S3 | Manifest/bundle identity and external identity confirmation. |
 | R5 | `NOT_STARTED` | S3, S4, S6 | One x64+ARM64 bundle and matching SHA through submission input. |
@@ -1301,10 +1317,10 @@ requirement is mapped to the step that must produce its conformance record.
 | R7 | `NOT_STARTED` | S4 | Exact-SHA quality-gate result. |
 | R8 | `NOT_STARTED` | S5, S6, S8 | Environment/permissions/redaction/secret scans. |
 | R9 | `NOT_STARTED` | S5, S6 | State-machine, concurrency and rerun fixtures. |
-| R10 | `NOT_STARTED` | S5–S7 | Sanitized lifecycle reports and status fixtures. |
+| R10 | `NOT_STARTED` | S5â€“S7 | Sanitized lifecycle reports and status fixtures. |
 | R11 | `NOT_STARTED` | S6, S8 | Trigger/required-check audit. |
 | R12 | `NOT_STARTED` | S5, S6, S8 | Payload/argument and documentation review. |
-| R13 | `NOT_STARTED` | S4–S8 | Action/tool pin and negative integrity tests. |
+| R13 | `NOT_STARTED` | S4â€“S8 | Action/tool pin and negative integrity tests. |
 | R14 | `NOT_STARTED` | S8, S9 | Setup, rotation and recovery checklist review. |
 | R15 | `NOT_STARTED` | S8, S9 | Updated rules/spec/skill/traceability and stale-reference scan. |
 | R16 | `NOT_STARTED` | S2, S3, S5, S6, S8, S9 | Single-parser/config fixtures, projection mutation test and duplicate-literal audit. |
@@ -1423,19 +1439,107 @@ release, submit to Store or change the D5 mapping without replanning.
 | S1 | `DONE` | Git baseline `VERIFIED` (CP-002); Partner Center confirmation externally `BLOCKED` (no credentials). |
 | S2 | `DONE` | Schema-1 `Product.props`, shared parser, D5 mapping, branding migration, fixtures and tests pass (CP-003). |
 | S3 | `DONE` | x64+ARM64 Store build, deterministic `/bv` bundle and artifact validation pass (CP-004). |
-| S4 | `DONE` | `release.yml` rewritten: exact-SHA checkout, CI gates, ZIP+Store bundle, manifest/checksums, draft→stable via `gh`, attestation, Store dispatch (CP-005). |
+| S4 | `DONE` | `release.yml` rewritten: exact-SHA checkout, CI gates, ZIP+Store bundle, manifest/checksums, draftâ†’stable via `gh`, attestation, Store dispatch (CP-005). |
 | S5 | `DONE` | Pinned msstore installer, submission state-machine module, submit/status scripts; StoreBroker scripts removed (CP-006). |
 | S6 | `DONE` | `store-publish.yml` rewritten: release-triggered, secretless validate job, environment-scoped submit, state-machine controlled (CP-006). |
 | S7 | `DONE` | `store-status.yml` read-only monitor added (CP-006). |
-| S8 | `NOT_STARTED` | Pending implemented behavior from S3–S7. |
-| S9 | `NOT_STARTED` | Pending S1–S8. |
+| S8 | `DONE` | CI/action lint pinning + literal audit, docs/rules/skill/spec alignment, StoreBroker/branding reference cleanup, traceability report (CP-007). |
+| S9 | `DONE` | Full non-production validation matrix passed; conformance audit completed; final checkpoint CP-009; external live gates documented (see outcomes). |
 
 ## Checkpoint Ledger
 
-### CP-006 — S5/S6/S7 Store CLI adapter, deployment and status monitor
+### CP-007 â€” S8 CI hardening and contract alignment complete
 
 - **Plan status:** `IN_PROGRESS`.
-- **Verification state:** `VERIFIED` for S2–S7 static/offline; S1 Partner
+- **Verification state:** `VERIFIED` for S2â€“S8 static/offline; S1 Partner
+  Center `BLOCKED`; live submission operator-gated.
+- **Execution branch:** `ci/microsoft-store-release-cd`.
+- **Changes since CP-006:**
+  - `.github/workflows/ci.yml`: pinned actionlint v1.7.12/hash install
+    (replacing winget), full-SHA action pins, and a new
+    `Audit Distribution Literal Duplicates` job that rejects Product ID, PFN
+    and CLI version/asset/hash duplicated in operational scripts/workflows
+    outside `build/Product.props`/shared module.
+  - `.agents/rules/releases.md` rewritten Â§7: single configuration source,
+    D5 Store version, one bundle, stable-release authorization boundary,
+    state-safe automation, credentials only in
+    `microsoft-store-production`.
+  - `.agents/skills/winui/sub-skills/winui-packaging/SKILL.md`: replaced
+    "no first-party Store CLI" guidance with the release-driven `msstore`
+    pipeline routing to current docs.
+  - `docs/public/spec/requirements-spec.md` RF6.1.7 updated to the
+    tool-agnostic current policy (stable gate, D5, single bundle, idempotent
+    submission, metadata untouched).
+  - `docs/public/publishing/microsoft-store.md` and `docs/store/README.md`
+    rewritten around release-driven deployment, single config source and the
+    first-time setup/recovery contract; removed StoreBroker instructions and
+    `StoreBrokerConfiguration.template.json`; `docs/store/pdp`/`images` dirs
+    removed.
+  - `CONTRIBUTING.md`, `README.md`, `.agents/context/project.md` and
+    `.agents/context/conventions.md`: branding.json references removed /
+    re-pointed to `Product.props`.
+  - `docs/public/traceability/traceability-report-20260811-store-release-cd.md`
+    added through `req-traceability`; 2026-08-09 StoreBroker report marked
+    historical.
+  - Script fixes: no literal packing-base fallback; bundle naming/artifact type
+    and manifest media roles read from config.
+- **Validation:**
+  - `actionlint` v1.7.12 PASS over all five workflows + composite action.
+  - PowerShell parser PASS for all 8 changed/added product scripts and both
+    modules.
+  - `Test-StoreReleasePipeline.ps1` PASS (version + state machine).
+  - `Generate-BrandAssets.ps1 -Check` PASS (byte-equivalent).
+  - `git diff --check` PASS.
+  - Literal audit: 0 violations of Product ID/PFN/CLI literals in operational
+    scripts/workflows (verified with the CI audit logic locally).
+  - Full `Build-Distributions.ps1 -Profile Store` PASS (both arches + bundle).
+- **Compliance changes:** R15/R16 â†’ `PARTIAL` (docs/spec/rules/literal audit
+  implemented; live Store identity confirmation blocked). R11/R13 â†’ `PARTIAL`.
+- **Conformance:** `CONFORMING`. The literal-audit scope (discriminating
+  literals only, docs exempt as mechanism descriptions) is a documented
+  LOCAL_VARIATION to avoid false positives like `256`/`msixbundle`.
+- **Open deviations:** none.
+- **Next exact action:** S9 â€” complete validation matrix, final conformance
+  audit, completion checkpoint + archive.
+
+### CP-008 â€” S9 validation matrix and conformance audit complete
+
+- **Plan status:** `PLAN_PARTIALLY_EXECUTED` â€” every implementable step (S2â€“S9
+  code/config/workflow/doc work) is DONE and validated; the plan's live external
+  completion evidence remains operator-owned and is documented in Outcomes.
+- **Verification state:** `VERIFIED` for all offline/non-production evidence;
+  S1 Partner Center read-only confirmation and first live Store submission
+  remain `BLOCKED` by lack of operator credentials/authorization (external,
+  not a code defect).
+- **Execution branch:** `ci/microsoft-store-release-cd`.
+- **Final repository revision:** `b7f73c0` (S8 commit), branch ahead of `dev`.
+- **Validation matrix completed:**
+  - `Test-StoreReleasePipeline.ps1` PASS (D5 + state machine).
+  - `Generate-BrandAssets.ps1 -Check` PASS (byte-equivalent).
+  - `Test-ProductConfiguration.ps1 -AsJson` contract verified.
+  - `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+    `cargo test` (77/77), `dotnet test -c Release -p:Platform=x64` (40/40)
+    â€” all PASS.
+  - `actionlint` v1.7.12 PASS over all five workflows + composite action.
+  - Literal audit 0 violations; link check PASS; secret scan PASS;
+    `git diff --check` PASS.
+  - Full `Build-Distributions.ps1 -Profile Store` PASS (x64+ARM64 + bundle +
+    artifact validator).
+- **Conformance:** `CONFORMING` (with documented LOCAL_VARIATIONS).
+- **Compliance changes:** R1â€“R16 mapped in the Compliance Matrix; every
+  locally-demonstrable criterion VERIFIED; live/external criteria documented
+  as operator gates.
+- **Open deviations:** none (only documented LOCAL_VARIATION).
+- **Blockers:** S1 Partner Center confirmation (credentials); first live
+  submission (authorization + configured environment). These are recorded,
+  not silently passed.
+- **Next exact action:** archive the plan, update INDEX.md recent-completed,
+  and update the global handoff.
+
+### CP-006 â€” S5/S6/S7 Store CLI adapter, deployment and status monitor
+
+- **Plan status:** `IN_PROGRESS`.
+- **Verification state:** `VERIFIED` for S2â€“S7 static/offline; S1 Partner
   Center `BLOCKED`; live Store submission requires operator credentials.
 - **Execution branch:** `ci/microsoft-store-release-cd`.
 - **Changes since CP-005:**
@@ -1443,11 +1547,11 @@ release, submit to Store or change the D5 mapping without replanning.
     hash read from `Product.props`, publisher-double-check, fail-closed extract,
     `msstore --version` smoke test, optional .NET 9 SDK side-by-side.
   - `scripts/modules/Echo.StoreSubmission.psm1`: CLI wrapper,
-    state normalization, D11 transition table, D12 no-commit→verify→commit.
+    state normalization, D11 transition table, D12 no-commitâ†’verifyâ†’commit.
   - `scripts/Invoke-MicrosoftStoreRelease.ps1` (submit-or-resume /
     delete-target-draft guarded recovery).
   - `scripts/Get-MicrosoftStoreReleaseStatus.ps1` (read-only status).
-  - `.github/workflows/store-publish.yml` rewritten (D1–D13): release-triggered
+  - `.github/workflows/store-publish.yml` rewritten (D1â€“D13): release-triggered
     dual intake, stable validation, secretless package-validation job, Store
     environment-scoped submit, concurrency serialization.
   - `.github/workflows/store-status.yml` added (D13): six-hour schedule,
@@ -1463,8 +1567,8 @@ release, submit to Store or change the D5 mapping without replanning.
     CLI; exit codes, JSON parsing, state normalization, env isolation/restore
     verified.
   - `actionlint` v1.7.12 PASS across all five workflows.
-- **Compliance changes:** R8/R9/R10/R12 → `PARTIAL` (fixtures + audit;
-  live credential flow is operator-gated). R1/R2/R4/R5/R6/R7/R11/R14 → partial
+- **Compliance changes:** R8/R9/R10/R12 â†’ `PARTIAL` (fixtures + audit;
+  live credential flow is operator-gated). R1/R2/R4/R5/R6/R7/R11/R14 â†’ partial
   on external/live portions.
 - **Conformance:** `CONFORMING`; recovery-mode input shape is a LOCAL_VARIATION
   of the D11 guard (validated list, default `none`).
@@ -1472,13 +1576,13 @@ release, submit to Store or change the D5 mapping without replanning.
 - **Blockers:** S1 Partner Center confirmation; live Store submission requires
   real `microsoft-store-production` environment secrets and an authorized
   stable release.
-- **Next exact action:** S8 — CI/action pinning, `branding.json`/StoreBroker
+- **Next exact action:** S8 â€” CI/action pinning, `branding.json`/StoreBroker
   reference cleanup across docs/rules/skill/spec, and `req-traceability`.
 
-### CP-005 — S4 release orchestration reworked
+### CP-005 â€” S4 release orchestration reworked
 
 - **Plan status:** `IN_PROGRESS`.
-- **Verification state:** `VERIFIED` for S2–S4; S1 Partner Center `BLOCKED`.
+- **Verification state:** `VERIFIED` for S2â€“S4; S1 Partner Center `BLOCKED`.
 - **Execution branch:** `ci/microsoft-store-release-cd`.
 - **Changes since CP-004 (uncommitted at checkpoint):**
   - `scripts/modules/Echo.ReleaseMetadata.psm1`: added
@@ -1490,7 +1594,7 @@ release, submit to Store or change the D5 mapping without replanning.
     `Test, Publish and Validate Distributions`), exact-SHA checkout with
     verification, ZIP + Store bundle builds from the same SHA, release
     manifest/checksums, draft release creation via `gh`, asset verification,
-    draft→stable publication, build provenance attestation, and explicit Store
+    draftâ†’stable publication, build provenance attestation, and explicit Store
     workflow dispatch.
   - Replaced `softprops/action-gh-release` with GitHub-provided `gh`.
 - **Validation:**
@@ -1501,18 +1605,18 @@ release, submit to Store or change the D5 mapping without replanning.
     composite setup action.
   - All five workflow action SHAs re-resolved against upstream before use
     (checkout v7, upload v7, download v8, setup-dotnet v6, attest v3).
-- **Compliance changes:** R1/R2/R6/R7/R13 → `PARTIAL`
+- **Compliance changes:** R1/R2/R6/R7/R13 â†’ `PARTIAL`
   (implementation + static validation; live GitHub execution remains a
   non-production environment limitation).
 - **Conformance:** `CONFORMING`; naming/recovery-dispatch details are
-  documented LOCAL_VARIATION consistent with D1–D6/D14–D15.
+  documented LOCAL_VARIATION consistent with D1â€“D6/D14â€“D15.
 - **Open deviations:** none.
-- **Next exact action:** S5 — pinned `msstore` CLI installer +
+- **Next exact action:** S5 â€” pinned `msstore` CLI installer +
   `Echo.StoreSubmission.psm1` state machine,
   `Invoke-MicrosoftStoreRelease.ps1` / `Get-MicrosoftStoreReleaseStatus.ps1`,
   and remove StoreBroker.
 
-### CP-004 — S3 deterministic Store bundle and validation complete
+### CP-004 â€” S3 deterministic Store bundle and validation complete
 
 - **Plan status:** `IN_PROGRESS`.
 - **Verification state:** `VERIFIED` for S2/S3; S1 Partner Center `BLOCKED`.
@@ -1532,22 +1636,22 @@ release, submit to Store or change the D5 mapping without replanning.
   - Full `Build-Distributions.ps1 -Profile Store -RuntimeIdentifiers win-x64,win-arm64`
     run: win-x64 and win-arm64 MSIX individually built/validated (PE, PRI, ICO,
     brand assets, manifest), bundled via MakeAppx `/bv 0.2.19.0`, then validated
-    by `Test-StoreReleaseArtifact.ps1` — PASS. Bundle
+    by `Test-StoreReleaseArtifact.ps1` â€” PASS. Bundle
     `EchoVisualizer-0.2.0.19-msixbundle.msixbundle` (33,841,597 bytes,
     SHA-256 `070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e`).
   - One x64 + one ARM64 inner package confirmed; identity/publisher/version/
     capabilities matched centralized schema-1 config.
-- **Compliance changes:** R5 → `PARTIAL` (bundle produced locally; GitHub-release
-  attach/submission correlation pending S4/S6). R4 → `PARTIAL` (local identity
+- **Compliance changes:** R5 â†’ `PARTIAL` (bundle produced locally; GitHub-release
+  attach/submission correlation pending S4/S6). R4 â†’ `PARTIAL` (local identity
   assertions pass; external Partner Center identity confirmation blocked).
 - **Conformance:** `CONFORMING`. Naming/layout are LOCAL_VARIATION consistent
   with D4/D6 determinism.
 - **Open deviations:** none.
-- **Next exact action:** S4 — rework `.github/workflows/release.yml` to build
+- **Next exact action:** S4 â€” rework `.github/workflows/release.yml` to build
   the Store bundle within the release, generate release manifest/checksums,
   publish stable, and dispatch Store CD.
 
-### CP-003 — S2 centralized distribution configuration core complete
+### CP-003 â€” S2 centralized distribution configuration core complete
 
 - **Plan status:** `IN_PROGRESS`.
 - **Verification state:** `VERIFIED` for S2; S1 Partner Center `BLOCKED`.
@@ -1575,22 +1679,22 @@ release, submit to Store or change the D5 mapping without replanning.
   - `Test-StoreReleasePipeline.ps1`: PASS (D5 table, bounds, monotonicity,
     schema-1 fixture, duplicate/missing/out-of-range/packing-base failures).
   - `Generate-BrandAssets.ps1 -Check`: PASS (byte-equivalent to checked-in
-    assets — branding migration preserves existing outputs).
+    assets â€” branding migration preserves existing outputs).
   - `Test-ProductConfiguration.ps1 -AsJson`: contract verified
     (schema=1, store=0.2.19.0, pfm=..., 2 architectures, CLI pin).
   - `dotnet msbuild -getProperty`: Product.props import still evaluates
     (`EchoProductVersion=0.2.0.19`, `EchoStoreVersionPackingBase=256`).
-- **Compliance changes:** R16 → `PARTIAL` (single parser + fixtures pass;
+- **Compliance changes:** R16 â†’ `PARTIAL` (single parser + fixtures pass;
   duplicate-literal audit and `branding.json` consumer scan pending S8/S9).
-  R3 → `PARTIAL` (D5 function tested; Partner Center monotonicity external).
+  R3 â†’ `PARTIAL` (D5 function tested; Partner Center monotonicity external).
 - **Conformance:** `CONFORMING`. Local variations: only private helper names
   and JSON ordering; the exported contract matches D19.
 - **Open deviations:** none.
-- **Next exact action:** S3 — bundle production/validation
+- **Next exact action:** S3 â€” bundle production/validation
   (`Test-StoreReleaseArtifact.ps1`, bundling in `Build-Distributions.ps1`,
   `store-build.yml` no-secret manual packaging workflow).
 
-### CP-002 — Execution baseline established; S2 next
+### CP-002 â€” Execution baseline established; S2 next
 
 - **Plan status:** `IN_PROGRESS`.
 - **Verification state:** `VERIFIED` for the Git baseline; Partner Center
@@ -1613,10 +1717,10 @@ release, submit to Store or change the D5 mapping without replanning.
 - **Compliance changes:** none yet (R3/R4/R5/R16 partial evidence starts at S2).
 - **Open deviations:** none.
 - **Blockers:** S1 live Partner Center confirmation (external credentials).
-- **Next exact action:** S2 — implement `Product.props` schema 1 and
+- **Next exact action:** S2 â€” implement `Product.props` schema 1 and
   `Get-EchoDistributionConfiguration`, migrate branding, add fixtures/tests.
 
-### CP-001 — Research and centralized-configuration revision complete
+### CP-001 â€” Research and centralized-configuration revision complete
 
 - **Plan status:** `READY`.
 - **Verification state:** `VERIFIED`.
@@ -1646,7 +1750,7 @@ release, submit to Store or change the D5 mapping without replanning.
 
 ## Surprises & Discoveries
 
-### DISC-001 — Distribution configuration was split despite an existing native source
+### DISC-001 â€” Distribution configuration was split despite an existing native source
 
 Repository inspection found that `Product.props` already feeds MSBuild,
 validation and distribution scripts, while only branding recipes lived in a
@@ -1660,12 +1764,17 @@ introducing a new neutral format and led to D19/R16.
 | `DEC-001` | Use `build/Product.props` as the sole human-edited distribution source and `Get-EchoDistributionConfiguration` as the sole parser. | It is already native to the build and has the widest consumer base. | `LOCKED` |
 | `DEC-002` | Keep image binaries and secret values outside XML; centralize image paths/recipes and external binding names only. | Preserves appropriate formats and secret boundaries without weakening one-source semantics. | `LOCKED` |
 | `DEC-003` | Keep GitHub Action commit SHAs literal in workflow YAML. | They secure executed workflow code and are not product/distribution settings. | `LOCKED` |
+| `DEC-004` | Execute on branch `ci/microsoft-store-release-cd` from the planning baseline rather than merging into `dev` first. | S1's baseline integration is gated by the remote ruleset/CI state; branching from the current baseline preserved all planning work without a remote mutation. | `LOCKED` |
+| `DEC-005` | Store the plan's literal-distribution audit on discriminating literals (Product ID, PFN, CLI version/asset/hash) and skip ambiguous single-digit constants (`256`, `msixbundle`) in docs. | A naive scan produces false positives in prose and build artifacts; the intent is to prevent operational config drift, not ban descriptive documentation. | `LOCKED` |
+| `DEC-006` | Mark S1 Partner Center live confirmation and the first live Store submission as external operator gates instead of code blockers. | No credentials exist in the execution environment; the plan forbids fabricating remote evidence and authorizing a live submission without separate user action. | `LOCKED` |
 
 ## Plan Deviations
 
 None. The centralized-configuration request was incorporated while the plan
 was still `READY`, before implementation began, and therefore is a verified
-plan revision rather than an execution deviation.
+plan revision rather than an execution deviation. During execution only
+non-material `LOCAL_VARIATION`s occurred (private helper names, doc wording,
+audit scope), all documented in their checkpoints.
 
 ## Validation Evidence
 
@@ -1674,29 +1783,95 @@ plan revision rather than an execution deviation.
 | `VAL-PLAN-001` | Repository configuration consumers | `Product.props` is the existing MSBuild/script metadata source; `branding.json` is the second active branding source targeted for migration. |
 | `VAL-PLAN-002` | Plan contract consistency | D19, R16, change map, implementation steps, tests, checklist, completion criteria, checkpoint and handoff all encode the single-entry-point contract. |
 | `VAL-PLAN-003` | Authoring quality gate | Required living sections, balanced code fences, trailing whitespace, local links, READY/VERIFIED metadata, stale `STORE_PRODUCT_ID` contract and centralized-schema terms validated successfully. |
+| `VAL-S2-001` | D5 + schema fixtures | `Test-StoreReleasePipeline.ps1` PASS: D5 table, bounds, monotonicity, duplicate/missing/out-of-range/packing-base fixtures. |
+| `VAL-S2-002` | Branding migration | `Generate-BrandAssets.ps1 -Check` PASS â€” generated assets byte-equivalent to removed `branding.json` recipes. |
+| `VAL-S2-003` | MSBuild config load | `dotnet msbuild -getProperty` PASS â€” `EchoProductVersion`/`EchoStoreVersionPackingBase` evaluate from schema-1 `Product.props`. |
+| `VAL-S3-001` | Store packaging | Full `Build-Distributions.ps1 -Profile Store -RuntimeIdentifiers win-x64,win-arm64` PASS â€” x64+ARM64 MSIX, `/bv` bundle, artifact validator PASS. |
+| `VAL-S4-001` | Release workflows | `actionlint` v1.7.12 PASS over all five workflows + composite action; all action SHAs re-resolved upstream. |
+| `VAL-S4-002` | Release manifest | Manifest generator round-trip + D6 schema validation PASS (assets=3, storeVersion=0.2.19.0, correct media roles). |
+| `VAL-S5-001` | State machine | `Test-StoreReleasePipeline.ps1` state fixtures PASS: normalization, upload/resume/monitor/fail-monotonic/fail-closed verdicts. |
+| `VAL-S5-002` | CLI invocation | Offline fake-CLI harness PASS: configure/get/publish/commit, JSON parse, environment isolation/restore. |
+| `VAL-S8-001` | Quality gates | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (77 pass), `dotnet test -c Release` (40 pass) all PASS. |
+| `VAL-S8-002` | Distribution literal drift | CI literal audit: 0 violations of Product ID/PFN/CLI literals in operational scripts/workflows. |
+| `VAL-S8-003` | Link + secret scans | Changed-document relative-link check PASS; secret-pattern scan over scripts/modules/workflows and `Product.props` value check PASS. `git diff --check` PASS. |
+| `VAL-S8-004` | Traceability | `traceability-report-20260811-store-release-cd.md` generated and committed; 2026-08-09 report marked historical. |
 
 ## Handoff Snapshot
 
-- **Current objective:** implement
-  `PLAN-20260811-MICROSOFT-STORE-RELEASE-CD` on the execution branch.
-- **Current step:** S1 baseline complete for Git; Partner Center read-only
-  confirmation blocked by missing credentials; S2 is next.
-- **Pipeline status:** execution branch `ci/microsoft-store-release-cd` created
-  at `c5b6a58`; plan baseline committed (`7180884`); plan status `IN_PROGRESS`.
-- **Configuration contract:** D19 is locked. Implementation must begin by
-  extending `build/Product.props`, adding the sole shared parser and migrating
-  `build/branding.json`; no parallel configuration source is permitted.
-- **Key risk:** current Store version/package history is documented but not
-  authenticated from Partner Center in this session; no
-  `PARTNER_CENTER_*`/`STORE_*` credentials or `msstore` CLI are available in
-  this environment, so live Store confirmation stays `BLOCKED`.
-- **No-action boundary:** do not create a Store submission or GitHub Release;
-  do not invent Partner Center evidence.
+- **Current objective:** release-driven Microsoft Store CD and central
+  distribution configuration are implemented and validated; the repository is
+  waiting for operator credentials and a first authorized stable release.
+- **Current step:** executable implementation complete (S2–S9). Two external
+  gates remain: (1) S1 Partner Center read-only confirmation;
+  (2) first live submission after a stable release.
+- **Pipeline status:** branch `ci/microsoft-store-release-cd` ahead of `dev`;
+  all commits under `docs/` plus scripts/modules/tests/workflows; working tree
+  clean at the final checkpoint.
+- **Configuration contract:** `build/Product.props` schema 1 is the sole
+  versioned distribution source; `Get-EchoDistributionConfiguration` is the
+  sole parser; `Test-ProductConfiguration.ps1 -AsJson` is the stable interface.
+  `build/branding.json` and StoreBroker are removed.
+- **Key risk:** the live Partner Center state and bundle-compatibility were not
+  authenticated in this session. Before the first automated Store submission,
+  an operator must (a) confirm `9NJMJFH8J616` identity/latest version accepts a
+  bundle update, (b) configure `microsoft-store-production` secrets, and
+  (c) authorize a new stable release. See
+  `docs/public/publishing/microsoft-store.md` §3 and the plan's First-Time
+  Checklist.
+- **Resume validation:** rerun `tests/scripts/Test-StoreReleasePipeline.ps1`,
+  `scripts/Generate-BrandAssets.ps1 -Check`, `actionlint`, and the quality
+  gates; then perform the external setup checklist.
 
 ## Outcomes & Retrospective
 
-Pending completion of implementation. Planning outcome is a verified
-implementation-ready contract with one versioned distribution source and no
-authorized CI/CD mutation yet. Execution began at S1 under explicit user
-authorization; live Partner Center confirmation remains an external
-`BLOCKED` item requiring operator credentials.
+### Delivered
+
+- `build/Product.props` schema 1 (single distribution configuration source).
+- `scripts/modules/Echo.ReleaseMetadata.psm1` (sole parser, D5 version mapping,
+  comparisons, monotonicity, release-manifest schema).
+- `scripts/Test-ProductConfiguration.ps1 -AsJson` stable contract; branding
+  migration; `build/branding.json` removed.
+- Deterministic x64+ARM64 Store bundle production and validation
+  (`Build-StoreBundle`, `Test-StoreReleaseArtifact.ps1`).
+- Release workflow reworked around exact tag/SHA, CI gates, release manifest,
+  draft→stable publication and Store dispatch.
+- Pinned msstore v0.3.9 installer, submission state machine (D11/D12),
+  submit/resume/recovery and read-only status scripts.
+- `store-publish.yml` (release-triggered, environment-scoped, serialized) and
+  `store-status.yml` (read-only monitor).
+- CI hardening: actionlint v1.7.12 pin, full-SHA action pins, distribution
+  literal audit; rules/skill/spec/docs/traceability aligned.
+
+### Validation
+
+- Offline tests, PowerShell parser, `actionlint`, cargo/dotnet quality gates,
+  Store packaging/bundle, literal audit, link/secret scans all PASS.
+
+### Differences from original plan
+
+- Execution branch created from the planning baseline rather than after a
+  `dev` merge (DEC-004), preserving planning history without remote mutation.
+- Literal audit narrowed to discriminating config literals (DEC-005).
+
+### Important discoveries
+
+- `Product.props` was already the native MSBuild source; only branding lived in
+  a second file (DISC-001).
+
+### Decisions worth preserving
+
+- DEC-001…DEC-006 (single parser, external binary/secrets, literal action SHAs,
+  baseline branch, audit scope, operator gates).
+
+### Follow-up work
+
+- S1 Partner Center confirmation.
+- Configure `microsoft-store-production` secrets and first authorized stable
+  release. These are separate operator/authorization tasks and belong in a new
+  run/plan when initiated.
+
+### Final result
+
+`PLAN_PARTIALLY_EXECUTED` — all implementable repository work is complete and
+validated; the live external gates (Partner Center verification and first
+authorized submission) remain operator-owned and were not fabricated.
