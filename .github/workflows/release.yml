@@ -306,6 +306,7 @@ jobs:
           RELEASE_ID: ${{ steps.detect.outputs.releaseId }}
           TAG_NAME: ${{ needs.metadata.outputs.tag_name }}
           VERSION: ${{ needs.metadata.outputs.version }}
+          TAG_SHA: ${{ needs.metadata.outputs.tag_sha }}
         run: |
           $body = @"
           ## Echo Live Music Visualizer v${{ needs.metadata.outputs.version }}
@@ -320,8 +321,11 @@ jobs:
           Extract the appropriate archive and launch `EchoVisualizer.exe`. The distribution is self-contained and does not require a separate Windows App Runtime installation.
           "@
           if ($env:ACTION -eq 'create-draft') {
+            # R2: persist the resolved commit SHA as target_commitish so recovery
+            # can later require exact equality instead of accepting a branch.
             $payload = [ordered]@{
               tag_name = $env:TAG_NAME
+              target_commitish = $env:TAG_SHA
               name = "Echo Visualizer v$env:VERSION"
               draft = $true
               prerelease = $false

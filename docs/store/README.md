@@ -48,3 +48,20 @@ The Store version derives deterministically from the product version
 production artifact is a single unsigned `.msixbundle` with one x64 and one
 ARM64 inner package; never submit loose per-architecture packages or two bundles
 after the bundle flow is active.
+
+## Mandatory provenance and pending identity
+
+Every release no-op and every Store mutation is gated on complete, exact
+evidence:
+
+- A GitHub release can only be a **no-op** when it records the resolved commit
+  SHA (`target_commitish`) that matches the tag's 40-character commit hash. No
+  marker, a branch, malformed or mismatched commit always **fails closed**.
+- `Published` uploads only when a valid canonical latest published version is
+  present; only `NoSubmission` may upload without a prior version.
+- `PendingCommit` commit/delete requires **all** of Store version, bundle name,
+  package family name and recomputed SHA-256 to be present and match the target.
+  Missing or mismatched fields fail closed; partial checks never authorise a
+  mutation.
+
+See `docs/public/publishing/microsoft-store.md` for the full procedure.

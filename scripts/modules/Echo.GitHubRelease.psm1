@@ -194,6 +194,24 @@ function Test-EchoGitHubReleaseCompatibility {
         return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = 'Release exists but is a prerelease; only stable releases are accepted.' }
     }
 
+    # R2: commit provenance must be provable before any no-op. A release is only
+    # a no-op when it points at the exact resolved commit SHA. Absent marker,
+    # branch name, invalid format or any mismatch always fails closed.
+    if ($ExpectedCommitSha -notmatch '^[0-9a-f]{40}$') {
+        return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Expected commit must be a lowercase 40-character hex SHA; got '$ExpectedCommitSha'." }
+    }
+    $hasTargetCommitish = $ReleaseInfo.PSObject.Properties.Name -contains 'target_commitish'
+    $targetCommitish = if ($hasTargetCommitish) { [string]$ReleaseInfo.target_commitish } else { '' }
+    if ([string]::IsNullOrWhiteSpace($targetCommitish)) {
+        return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = 'Release does not record a resolvable commit marker (target_commitish is absent); cannot prove provenance.' }
+    }
+    if ($targetCommitish -notmatch '^[0-9a-f]{40}$') {
+        return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Release target_commitish '$targetCommitish' is not a commit SHA (likely a branch name); a branch is not valid source proof." }
+    }
+    if ($targetCommitish -cne $ExpectedCommitSha) {
+        return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Release points to commit $targetCommitish but the expected release commit is $ExpectedCommitSha." }
+    }
+
     $actualAssets = @($ActualAssets)
     $expectedByName = @{}
     foreach ($expected in $ExpectedAssets) {

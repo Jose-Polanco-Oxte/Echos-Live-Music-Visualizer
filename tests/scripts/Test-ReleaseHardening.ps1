@@ -148,15 +148,6 @@ $verdict = Test-EchoGitHubReleaseCompatibility `
 Assert-True $verdict.Safe 'exact compatible release is a no-op'
 Assert-Equal 'no-op' $verdict.Action 'compatible release never republishes'
 
-# Conflicted commit (different SHA with same assets) must fail closed.
-$conflicted = Get-Content -LiteralPath (Join-Path $fixturesGitHub 'release-conflicted-commit.json') -Raw | ConvertFrom-Json
-$verdict2 = Test-EchoGitHubReleaseCompatibility `
-    -ReleaseInfo $conflicted `
-    -ExpectedCommitSha '3333333333333333333333333333333333333333' `
-    -ExpectedAssets $expectedAssets `
-    -ActualAssets $conflicted.assets
-Assert-True (-not $verdict2.Safe) 'conflicted commit release fails closed'
-
 # Draft / prerelease fail closed.
 $draft = Get-Content -LiteralPath (Join-Path $fixturesGitHub 'release-draft.json') -Raw | ConvertFrom-Json
 $verdictDraft = Test-EchoGitHubReleaseCompatibility -ReleaseInfo $draft -ExpectedCommitSha $annotatedSha -ExpectedAssets @() -ActualAssets @()
@@ -169,6 +160,42 @@ Assert-Equal 'fail-closed' $verdictPre.Action 'prerelease must fail closed'
 # Missing release -> create-draft.
 $verdictMissing = Test-EchoGitHubReleaseCompatibility -ReleaseInfo $null -ExpectedCommitSha $annotatedSha -ExpectedAssets @() -ActualAssets @()
 Assert-Equal 'create-draft' $verdictMissing.Action 'missing release allows a single draft creation'
+
+# --- R2: commit provenance is mandatory for any no-op -------------
+Write-Host '== R2 Commit provenance (post-audit) ==' -ForegroundColor Cyan
+
+# A release whose target_commitish is absent can never be a no-op.
+$noSha = Get-Content -LiteralPath (Join-Path $fixturesGitHub 'release-compatible.json') -Raw | ConvertFrom-Json
+$noSha.PSObject.Properties.Remove('target_commitish')
+$verdictNoSha = Test-EchoGitHubReleaseCompatibility -ReleaseInfo $noSha -ExpectedCommitSha $annotatedSha -ExpectedAssets $expectedAssets -ActualAssets $compatibleAssets
+Assert-Equal 'fail-closed' $verdictNoSha.Action 'release without a commit marker fails closed, never no-op'
+
+# A release whose target_commitish is a branch name (not a SHA) fails closed.
+$branch = Get-Content -LiteralPath (Join-Path $fixturesGitHub 'release-compatible.json') -Raw | ConvertFrom-Json
+$branch.target_commitish = 'main'
+$verdictBranch = Test-EchoGitHubReleaseCompatibility -ReleaseInfo $branch -ExpectedCommitSha $annotatedSha -ExpectedAssets $expectedAssets -ActualAssets $compatibleAssets
+Assert-Equal 'fail-closed' $verdictBranch.Action 'a branch target_commitish is not valid source proof'
+
+# A release with a malformed/non-SHA marker fails closed.
+$malformed = Get-Content -LiteralPath (Join-Path $fixturesGitHub 'release-compatible.json') -Raw | ConvertFrom-Json
+$malformed.target_commitish = 'not-a-commit'
+$verdictMalformed = Test-EchoGitHubReleaseCompatibility -ReleaseInfo $malformed -ExpectedCommitSha $annotatedSha -ExpectedAssets $expectedAssets -ActualAssets $compatibleAssets
+Assert-Equal 'fail-closed' $verdictMalformed.Action 'malformed target_commitish fails closed'
+
+# An invalid ExpectedCommitSha (wrong length/format) fails closed even when the
+# assets match exactly.
+$badExpect = Test-EchoGitHubReleaseCompatibility -ReleaseInfo $release -ExpectedCommitSha 'abc' -ExpectedAssets $expectedAssets -ActualAssets $compatibleAssets
+Assert-Equal 'fail-closed' $badExpect.Action 'invalid expected SHA fails closed'
+
+# An expected SHA that does not match the resolved release commit fails closed
+# with otherwise-identical assets (isolates commit conflict, R3).
+$conflicted = Get-Content -LiteralPath (Join-Path $fixturesGitHub 'release-conflicted-commit.json') -Raw | ConvertFrom-Json
+$verdict2 = Test-EchoGitHubReleaseCompatibility `
+    -ReleaseInfo $conflicted `
+    -ExpectedCommitSha '3333333333333333333333333333333333333333' `
+    -ExpectedAssets $expectedAssets `
+    -ActualAssets $conflicted.assets
+Assert-Equal 'fail-closed' $verdict2.Action 'commit-conflicted release fails closed even with identical assets'
 
 # --- R5: exact filename -> hash validation ---------------------------------
 Write-Host '== R5 SHA256SUMS exact pairs ==' -ForegroundColor Cyan
@@ -275,6 +302,110 @@ Assert-Throws {
         -TargetBundleSha256 '070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e' `
         -TargetPackageFamilyName 'Tun4z.EchoVisualizer_ga3qxkah0cx76'
 } 'failed closed' 'conflicting pending submission stops the preflight'
+Set-EchoStoreCliProcessInvoker -Invoker $null
+
+# --- R4: Published requires a valid canonical latest version ---------------
+Write-Host '== R4 Published version requirement (post-audit) ==' -ForegroundColor Cyan
+
+# Published with a valid canonical latest version and a newer target uploads.
+$pubOk = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+Assert-Equal 'upload' $pubOk.Action 'published with valid version uploads a newer target'
+
+# Published with an empty latest version can never upload (fail closed).
+$pubNoVersion = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.19.0' -LatestPublishedVersion ''
+Assert-Equal 'fail-closed' $pubNoVersion.Action 'published without latest version fails closed, never upload'
+
+# Published with a malformed latest version fails closed.
+$pubMalformed = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.19.0' -LatestPublishedVersion 'not.a.version'
+Assert-Equal 'fail-closed' $pubMalformed.Action 'published with malformed latest version fails closed'
+
+# NoSubmission is the only state that may lack a previous version.
+$nosubNoVersion = Test-EchoStoreStateSafeToProceed -CurrentState 'NoSubmission' -TargetVersion '0.2.19.0' -LatestPublishedVersion ''
+Assert-Equal 'upload' $nosubNoVersion.Action 'NoSubmission may upload without a prior version'
+
+# --- R5: PendingCommit is all-or-nothing -----------------------------------
+Write-Host '== R5 PendingCommit all-or-nothing (post-audit) ==' -ForegroundColor Cyan
+
+function New-PendingSplat {
+    param(
+        [string]$PendingTargetVersion = '0.2.19.0',
+        [string]$PendingPackageName = 'EchoVisualizer-0.2.0.19-msixbundle.msixbundle',
+        [string]$PendingPackageFamilyName = 'Tun4z.EchoVisualizer_ga3qxkah0cx76',
+        [string]$PendingPackageSha256 = '070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e'
+    )
+    return @{
+        CurrentState = 'PendingCommit'
+        TargetVersion = '0.2.19.0'
+        TargetBundleName = 'EchoVisualizer-0.2.0.19-msixbundle.msixbundle'
+        TargetBundleSha256 = '070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e'
+        TargetPackageFamilyName = 'Tun4z.EchoVisualizer_ga3qxkah0cx76'
+        PendingTargetVersion = $PendingTargetVersion
+        PendingPackageName = $PendingPackageName
+        PendingPackageFamilyName = $PendingPackageFamilyName
+        PendingPackageSha256 = $PendingPackageSha256
+    }
+}
+
+# Complete, exact match resumes.
+$splat = New-PendingSplat
+$resumeExact = Test-EchoStoreStateSafeToProceed @splat
+Assert-Equal 'commit-resume' $resumeExact.Action 'complete exact pending resumes commit'
+
+# Missing remote field -> fail closed, never wildcard.
+$splat = New-PendingSplat -PendingPackageSha256 ''
+$missingRemote = Test-EchoStoreStateSafeToProceed @splat
+Assert-Equal 'fail-closed' $missingRemote.Action 'missing remote hash fails closed'
+
+# Missing remote bundle name -> fail closed.
+$splat = New-PendingSplat -PendingPackageName ''
+$missingName = Test-EchoStoreStateSafeToProceed @splat
+Assert-Equal 'fail-closed' $missingName.Action 'missing remote bundle name fails closed'
+$splat = New-PendingSplat -PendingPackageFamilyName ''
+$missingPfn = Test-EchoStoreStateSafeToProceed @splat
+Assert-Equal 'fail-closed' $missingPfn.Action 'missing remote package family name fails closed'
+$splat = New-PendingSplat -PendingTargetVersion ''
+$missingVersion = Test-EchoStoreStateSafeToProceed @splat
+Assert-Equal 'fail-closed' $missingVersion.Action 'missing remote version fails closed'
+
+# Missing target field -> fail closed.
+$missingTarget = New-PendingSplat
+$missingTarget.TargetBundleSha256 = ''
+$missingTargetVerdict = Test-EchoStoreStateSafeToProceed @missingTarget
+Assert-Equal 'fail-closed' $missingTargetVerdict.Action 'missing target hash fails closed'
+
+# Mismatched hash -> fail closed (the specific prior gap).
+$splat = New-PendingSplat -PendingPackageSha256 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+$mismatchHash = Test-EchoStoreStateSafeToProceed @splat
+Assert-Equal 'fail-closed' $mismatchHash.Action 'mismatched pending hash fails closed'
+
+# --- R6/R7: fail-closed cases invoke zero mutators -------------------------
+Write-Host '== R6/R7 Mutation counters (post-audit) ==' -ForegroundColor Cyan
+
+# Count mutating invocations when a conflicting pending state is preflighted:
+# preflight must call only read-only `submission get`, never publish/commit/delete.
+$mutatingCount = @{ publish = 0; commit = 0; del = 0; get = 0 }
+Set-EchoStoreCliProcessInvoker -Invoker ([scriptblock]{ param($CliPath, $Arguments, $Environment)
+    if ($Arguments -contains 'get') { $script:mutatingCount.get++; return [pscustomobject]@{ ExitCode = 0; Stdout = @((Get-Content -LiteralPath (Join-Path $fixturesStore 'state-pendingcommit-conflicting.json') -Raw)); Stderr = @() } }
+    if ($Arguments -contains 'publish') { $script:mutatingCount.publish++; return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() } }
+    if ($Arguments -contains 'commit') { $script:mutatingCount.commit++; return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() } }
+    if ($Arguments -contains 'delete') { $script:mutatingCount.del++; return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() } }
+    return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() }
+})
+$preflightFired = $false
+try {
+    Invoke-EchoStorePreflight `
+        -CliPath 'fake\msstore.exe' `
+        -ProductId '9NJMJFH8J616' `
+        -TargetVersion '0.2.19.0' `
+        -TargetBundleName 'EchoVisualizer-0.2.0.19-msixbundle.msixbundle' `
+        -TargetBundleSha256 '070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e' `
+        -TargetPackageFamilyName 'Tun4z.EchoVisualizer_ga3qxkah0cx76' | Out-Null
+}
+catch { $preflightFired = $true }
+Assert-True $preflightFired 'conflicting preflight must throw'
+Assert-Equal 0 $script:mutatingCount.publish 'fail-closed preflight never calls publish'
+Assert-Equal 0 $script:mutatingCount.commit 'fail-closed preflight never calls commit'
+Assert-Equal 0 $script:mutatingCount.del 'fail-closed preflight never calls submission delete'
 Set-EchoStoreCliProcessInvoker -Invoker $null
 
 # --- R11 — retry classification --------------------------------------------

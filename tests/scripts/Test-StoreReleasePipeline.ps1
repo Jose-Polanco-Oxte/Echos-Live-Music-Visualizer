@@ -129,9 +129,22 @@ $upload = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVers
 Assert-Equal 'upload' $upload.Action 'published -> upload'
 Assert-True $upload.Safe 'published is safe to upload'
 
-$resume = Test-EchoStoreStateSafeToProceed -CurrentState 'PendingCommit' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+# R5: commit-resume requires complete, matching pending identity.
+$resume = Test-EchoStoreStateSafeToProceed `
+    -CurrentState 'PendingCommit' `
+    -TargetVersion '0.2.19.0' `
+    -LatestPublishedVersion '0.2.0.0' `
+    -PendingTargetVersion '0.2.19.0' `
+    -PendingPackageName 'EchoVisualizer-0.2.0.19-msixbundle.msixbundle' `
+    -PendingPackageFamilyName 'Tun4z.EchoVisualizer_ga3qxkah0cx76' `
+    -PendingPackageSha256 '070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e' `
+    -TargetBundleName 'EchoVisualizer-0.2.0.19-msixbundle.msixbundle' `
+    -TargetBundleSha256 '070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e' `
+    -TargetPackageFamilyName 'Tun4z.EchoVisualizer_ga3qxkah0cx76'
 Assert-Equal 'commit-resume' $resume.Action 'pendingcommit -> resume'
 Assert-True $resume.Safe 'pendingcommit is safe to resume'
+$resumeIncomplete = Test-EchoStoreStateSafeToProceed -CurrentState 'PendingCommit' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+Assert-Equal 'fail-closed' $resumeIncomplete.Action 'pendingcommit without identity fails closed'
 
 $monitor = Test-EchoStoreStateSafeToProceed -CurrentState 'Certification' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
 Assert-Equal 'monitor-only' $monitor.Action 'certification -> monitor'

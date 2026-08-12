@@ -356,6 +356,13 @@ function Test-EchoVersionNotExceeds {
     return $true
 }
 
+# Returns $true when $Version is a canonical four-part numeric version (a.b.c.d).
+function Test-EchoCanonicalStoreVersion {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Version)
+    return ($Version -match '^\d+\.\d+\.\d+\.\d+$')
+}
+
 # Transition verdict table (D11) with pending-submission correlation (R10).
 function Test-EchoStoreStateSafeToProceed {
     [CmdletBinding()]
@@ -377,28 +384,70 @@ function Test-EchoStoreStateSafeToProceed {
         return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "State '$CurrentState' is not resumable without operator action." }
     }
 
-    if ($CurrentState -in @('NoSubmission', 'Published')) {
+    # R4: only NoSubmission may lack a previous published version. A target that
+    # is not itself a valid canonical version can never authorise upload.
+    if ($CurrentState -eq 'NoSubmission') {
+        if (-not (Test-EchoCanonicalStoreVersion -Version $TargetVersion)) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Target version '$TargetVersion' is not a canonical four-part version; cannot upload." }
+        }
         if ($LatestPublishedVersion) {
             $notGreater = Test-EchoVersionNotExceeds -Left $TargetVersion -Right $LatestPublishedVersion
             if ($notGreater) {
                 return [pscustomobject]@{ Safe = $false; Action = 'fail-monotonic'; Reason = "Target $TargetVersion does not exceed latest published $LatestPublishedVersion." }
             }
         }
-        return [pscustomobject]@{ Safe = $true; Action = 'upload'; Reason = 'No pending submission; safe to create a new draft.' }
+        return [pscustomobject]@{ Safe = $true; Action = 'upload'; Reason = 'No submission exists; safe to create a new draft.' }
+    }
+
+    # R4: Published requires a valid, canonical latest published version before
+    # any upload. Missing, malformed or non-canonical evidence fails closed.
+    if ($CurrentState -eq 'Published') {
+        if (-not $LatestPublishedVersion) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "State 'Published' has no latest published version; cannot prove a monotonic upload for $TargetVersion." }
+        }
+        if (-not (Test-EchoCanonicalStoreVersion -Version $LatestPublishedVersion)) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Published latest version '$LatestPublishedVersion' is not a canonical four-part version; cannot upload." }
+        }
+        if (-not (Test-EchoCanonicalStoreVersion -Version $TargetVersion)) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Target version '$TargetVersion' is not a canonical four-part version; cannot upload." }
+        }
+        $notGreater = Test-EchoVersionNotExceeds -Left $TargetVersion -Right $LatestPublishedVersion
+        if ($notGreater) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-monotonic'; Reason = "Target $TargetVersion does not exceed latest published $LatestPublishedVersion." }
+        }
+        return [pscustomobject]@{ Safe = $true; Action = 'upload'; Reason = 'Published state is valid and the target is strictly newer; safe to create a draft.' }
     }
 
     if ($CurrentState -eq 'PendingCommit') {
-        # R10: resume only when the pending submission exactly matches the target.
-        if ($PendingTargetVersion -and $PendingTargetVersion -ne $TargetVersion) {
+        # R5: commit-resume is all-or-nothing. Version, bundle, package family
+        # and SHA-256 must ALL be present on both the remote and the target and
+        # must exactly match. Any single gap or mismatch fails closed; an absent
+        # remote field or target value is never treated as a wildcard.
+        if (-not $PendingTargetVersion) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = 'Pending submission is missing its remote version; cannot resume commit.' }
+        }
+        if (-not $PendingPackageName) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = 'Pending submission is missing its bundle name; cannot resume commit.' }
+        }
+        if (-not $PendingPackageFamilyName) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = 'Pending submission is missing its package family name; cannot resume commit.' }
+        }
+        if (-not $PendingPackageSha256) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = 'Pending submission is missing its package SHA-256; cannot resume commit.' }
+        }
+        if (-not $TargetVersion -or -not $TargetBundleName -or -not $TargetBundleSha256 -or -not $TargetPackageFamilyName) {
+            return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = 'Target identity is incomplete; cannot correlate the pending submission.' }
+        }
+        if ($PendingTargetVersion -ne $TargetVersion) {
             return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Pending submission targets $PendingTargetVersion but release expects $TargetVersion. Stop for an explicit decision." }
         }
-        if ($TargetPackageFamilyName -and $PendingPackageFamilyName -and $PendingPackageFamilyName -ne $TargetPackageFamilyName) {
+        if ($PendingPackageFamilyName -ne $TargetPackageFamilyName) {
             return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Pending submission package family '$PendingPackageFamilyName' does not match target '$TargetPackageFamilyName'. Stop for an explicit decision." }
         }
-        if ($TargetBundleName -and $PendingPackageName -and $PendingPackageName -ne $TargetBundleName) {
+        if ($PendingPackageName -ne $TargetBundleName) {
             return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Pending submission bundle '$PendingPackageName' does not match target '$TargetBundleName'. Stop for an explicit decision." }
         }
-        if ($TargetBundleSha256 -and $PendingPackageSha256 -and $PendingPackageSha256 -ne $TargetBundleSha256) {
+        if ($PendingPackageSha256 -ne $TargetBundleSha256) {
             return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = 'Pending submission bundle hash does not match the target bundle hash. Stop for an explicit decision.' }
         }
         return [pscustomobject]@{ Safe = $true; Action = 'commit-resume'; Reason = 'Existing pending submission matches the exact target; safe to commit.' }

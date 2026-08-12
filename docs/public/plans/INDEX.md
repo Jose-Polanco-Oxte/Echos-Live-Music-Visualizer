@@ -15,6 +15,7 @@ None.
 
 | Plan ID | Title | Completed | Outcome | Plan |
 |---|---|---|---|---|
+| `PLAN-20260811-RELEASE-CD-POST-AUDIT-FIXES` | Correcciones posteriores a la auditoría del release CD | 2026-08-11 | `PLAN_EXECUTED` (offline scope; live Store gates remain external operator steps) | [Archived plan](archive/completed/2026/08/2026-08-11--release-cd-post-audit-fixes.md) |
 | `PLAN-20260811-RELEASE-CD-HARDENING` | Endurecimiento y corrección del release CI/CD de Microsoft Store | 2026-08-11 | `PLAN_EXECUTED` (offline scope; live Store gates remain external operator steps) | [Archived plan](archive/completed/2026/08/2026-08-11--microsoft-store-release-cd-hardening.md) |
 | `PLAN-20260811-MICROSOFT-STORE-RELEASE-CD` | CI/CD seguro y configuración centralizada de releases hacia Microsoft Store | 2026-08-11 | `PLAN_PARTIALLY_EXECUTED` (implementation complete; live Partner Center confirmation and first submission are operator-gated) | [Archived plan](archive/completed/2026/08/2026-08-11--microsoft-store-release-cd.md) |
 | `PLAN-20260811-RESTORE-BUILD-METADATA` | Restore canonical build metadata | 2026-08-11 | `PLAN_EXECUTED` | [Archived plan](archive/completed/2026/08/2026-08-11--restore-build-metadata.md) |

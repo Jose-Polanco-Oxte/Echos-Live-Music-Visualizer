@@ -93,10 +93,14 @@ no secret value is ever committed.
    exact SHA, builds the GitHub ZIPs and the Store bundle from the same SHA,
    generates the release manifest and `SHA256SUMS.txt` (validated by exact
    filename→hash pairs), publishes the stable GitHub Release, and explicitly
-   dispatches `store-publish.yml`. Publishing is **idempotent**: if a stable
-   release with the exact tag/commit/assets already exists it is reused as a
-   no-op; a draft/pre-release or a conflicting release fails closed instead of
-   being overwritten.
+   dispatches `store-publish.yml`. Publishing is **idempotent**: a release can
+   only be a no-op when it records the exact resolved commit SHA
+   (`target_commitish`) that matches the relocated tag's 40-character hash and
+   its asset names/sizes match exactly. The draft-creation payload persists the
+   resolved SHA as `target_commitish`. A release whose commit marker is absent,
+   a branch name, malformed, or different from the resolved SHA always **fails
+   closed** instead of being treated as a no-op or overwritten; a draft or
+   pre-release also fails closed.
 3. `store-publish.yml` resolves the same tag to the same commit, checks out that
    SHA in the jobs that consume scripts, verifies the exact
    tag/SHA/version/manifest/asset digest (recomputing the downloaded bundle hash
@@ -105,7 +109,13 @@ no secret value is ever committed.
    read-only preflight against Partner Center. The fail-closed state machine
    either reports already published, resumes a pending commit only when it
    exactly matches the target version/package/hash, uploads a new no-commit
-   draft then commits, or stops without mutation.
+   draft then commits, or stops without mutation. Commit is never authorised from a
+   state-only check: after a no-commit upload the script re-runs the full
+   correlation verdict and commits only when it returns the exact `commit-resume`
+   transition (matching Store version, bundle name, package family name and
+   recomputed SHA-256). A published product always requires a valid canonical
+   latest published version before any upload; only `NoSubmission` may upload
+   without a prior version.
 4. Certification may take up to three business days; `store-status.yml`
    (scheduled every six hours, read-only) follows it to a terminal state and
    retains sanitized reports for 90 days.
@@ -121,11 +131,12 @@ no secret value is ever committed.
 | Certification failure | Fetch the certification report in Partner Center, fix, and ship a higher product/Store version. |
 
 `delete-target-draft` deletes only a `PendingCommit` draft whose pending target
-version, package name and hash exactly match the release under recovery, and it
-is only reachable through the explicit `recovery_mode=delete-target-draft`
-workflow input. It never deletes a committed, certifying or differently-versioned
-submission, and the submit script re-verifies the target correlation before
-deleting.
+version, package family name, package name and SHA-256 **all** exactly match the
+release under recovery, and it is only reachable through the explicit
+`recovery_mode=delete-target-draft` workflow input. It never deletes a
+committed, certifying or differently-versioned submission, and the submit script
+always requires the full correlation (including the recomputed bundle hash) to
+return the strict verdict before deleting.
 
 ## 6. Troubleshooting
 

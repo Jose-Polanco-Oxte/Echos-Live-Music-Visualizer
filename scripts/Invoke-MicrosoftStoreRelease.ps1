@@ -102,18 +102,24 @@ $bundleSha256 = (Get-FileHash -LiteralPath $bundleFull -Algorithm SHA256).Hash.T
 $targetPackageFamilyName = $config.Store.PackageFamilyName
 
 if ($Operation -eq 'delete-target-draft') {
-    # R12: deletion requires an explicit input (already validated by the caller
-    # workflow) plus proof that the pending draft is exactly the target.
+    # R12/R6: deletion requires the same strict correlation as commit, including
+    # the bundle hash, before any destructive mutation. State-only checks are
+    # never sufficient.
     Write-Host "Recovery: verifying target draft for $productId at $targetVersion" -ForegroundColor Yellow
     $current = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues
-    if ($current.State -ne 'PendingCommit') {
-        throw "Target draft deletion requires state PendingCommit; found $($current.State)."
-    }
-    if ($current.PendingTargetVersion -and $current.PendingTargetVersion -ne $targetVersion) {
-        throw "Refusing to delete a pending draft for $($current.PendingTargetVersion); target is $targetVersion."
-    }
-    if ($current.PendingPackageName -and $current.PendingPackageName -ne $bundleName) {
-        throw "Refusing to delete a pending draft for '$($current.PendingPackageName)'; target bundle is '$bundleName'."
+    $deleteVerdict = Test-EchoStoreStateSafeToProceed `
+        -CurrentState $current.State `
+        -TargetVersion $targetVersion `
+        -LatestPublishedVersion $current.LatestPublishedVersion `
+        -PendingTargetVersion $current.PendingTargetVersion `
+        -PendingPackageName $current.PendingPackageName `
+        -PendingPackageFamilyName $current.PendingPackageFamilyName `
+        -PendingPackageSha256 $current.PendingPackageSha256 `
+        -TargetBundleName $bundleName `
+        -TargetBundleSha256 $bundleSha256 `
+        -TargetPackageFamilyName $targetPackageFamilyName
+    if (-not $deleteVerdict.Safe) {
+        throw "Refusing to delete pending draft (state $($current.State)): $($deleteVerdict.Reason)"
     }
     $deleteResult = Invoke-EchoMsStoreCli `
         -CliPath $CliPath `
@@ -162,8 +168,22 @@ switch ($preflight.Verdict.Action) {
         }
 
         $verify = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues
-        if ($verify.State -ne 'PendingCommit') {
-            throw "Expected PendingCommit after no-commit publish; found $($verify.State)."
+        # R6: after a no-commit publish, commit is authorised only when the full
+        # correlation verdict is exactly `commit-resume`; a State-only check is not
+        # sufficient and could commit a different submission.
+        $postVerdict = Test-EchoStoreStateSafeToProceed `
+            -CurrentState $verify.State `
+            -TargetVersion $targetVersion `
+            -LatestPublishedVersion $verify.LatestPublishedVersion `
+            -PendingTargetVersion $verify.PendingTargetVersion `
+            -PendingPackageName $verify.PendingPackageName `
+            -PendingPackageFamilyName $verify.PendingPackageFamilyName `
+            -PendingPackageSha256 $verify.PendingPackageSha256 `
+            -TargetBundleName $bundleName `
+            -TargetBundleSha256 $bundleSha256 `
+            -TargetPackageFamilyName $targetPackageFamilyName
+        if ($postVerdict.Action -ne 'commit-resume') {
+            throw "Post-publish correlation failed closed in state $($verify.State): $($postVerdict.Reason)"
         }
 
         Invoke-EchoStoreCommit -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues | Out-Null
