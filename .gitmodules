@@ -1,0 +1,3 @@
+[submodule ".agents/skills/scripting/sub-skills/automation-oportunity-detection/agent-sh/skillers"]
+	path = .agents/skills/scripting/sub-skills/automation-oportunity-detection/agent-sh/skillers
+	url = https://github.com/agent-sh/skillers.git

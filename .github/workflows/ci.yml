@@ -27,8 +27,8 @@ jobs:
         shell: pwsh
         run: |
           $version = '1.7.12'
-          $sha256 = '6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9'
-          $asset = "actionlint_${version}_windows_amd64.zip"
+          $sha256 = '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
+          $asset = "actionlint_${version}_linux_amd64.tar.gz"
           $url = "https://github.com/rhysd/actionlint/releases/download/v$version/$asset"
           $archive = Join-Path $env:RUNNER_TEMP $asset
           Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
@@ -38,12 +38,25 @@ jobs:
           }
           $toolDir = Join-Path $env:RUNNER_TEMP 'actionlint'
           New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
-          Expand-Archive -LiteralPath $archive -DestinationPath $toolDir -Force
-          $toolDir >> $env:GITHUB_PATH
+          tar -xzf $archive -C $toolDir
+          $actionlint = Join-Path $toolDir 'actionlint'
+          if (-not (Test-Path -LiteralPath $actionlint)) {
+            throw "The pinned actionlint archive did not contain $actionlint."
+          }
+          chmod +x $actionlint
+          & $actionlint -version
 
       - name: Run actionlint
         shell: pwsh
-        run: actionlint
+        run: |
+          $actionlint = Join-Path $env:RUNNER_TEMP 'actionlint/actionlint'
+          if (-not (Test-Path -LiteralPath $actionlint)) {
+            throw "Pinned actionlint executable was not found at $actionlint."
+          }
+          & $actionlint
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
 
       - name: Audit Distribution Literal Duplicates
         shell: pwsh
