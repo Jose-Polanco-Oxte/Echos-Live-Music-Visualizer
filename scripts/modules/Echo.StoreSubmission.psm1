@@ -14,8 +14,8 @@
 #
 # No mutating command is ever invoked before a read-only preflight classifies
 # Partner Center state. Unknown or malformed state fails closed. A pending
-# submission can only be resumed when it exactly matches the target product,
-# version, bundle name and hash (R10).
+# submission can only be resumed when its queried Product ID context exactly
+# matches the target product, version, bundle name and hash (R10).
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -269,6 +269,7 @@ function Get-EchoStoreSubmissionState {
         if ($stderrText -match '(?i)(no submission|not found|no submissions)') {
             return [pscustomobject]@{
                 SubmissionExists = $false
+                QueriedProductId = $ProductId
                 State = 'NoSubmission'
                 LatestPublishedVersion = ''
                 PendingTargetVersion = ''
@@ -328,6 +329,7 @@ function Get-EchoStoreSubmissionState {
 
     return [pscustomobject]@{
         SubmissionExists = $hasSubmission
+        QueriedProductId = $ProductId
         State = Normalize-EchoStoreState $stateValue
         LatestPublishedVersion = $latestPublished
         PendingTargetVersion = $pendingVersion
@@ -368,6 +370,8 @@ function Test-EchoStoreStateSafeToProceed {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$CurrentState,
+        [string]$TargetProductId = '',
+        [string]$QueriedProductId = '',
         [Parameter(Mandatory)][string]$TargetVersion,
         [string]$LatestPublishedVersion = '',
         [string]$PendingTargetVersion = '',
@@ -378,6 +382,13 @@ function Test-EchoStoreStateSafeToProceed {
         [string]$TargetBundleSha256 = '',
         [string]$TargetPackageFamilyName = ''
     )
+
+    if ([string]::IsNullOrWhiteSpace($TargetProductId) -or [string]::IsNullOrWhiteSpace($QueriedProductId)) {
+        return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = 'Product ID context is incomplete; cannot correlate the queried submission with the target.' }
+    }
+    if ($QueriedProductId -cne $TargetProductId) {
+        return [pscustomobject]@{ Safe = $false; Action = 'fail-closed'; Reason = "Queried Product ID '$QueriedProductId' does not match target '$TargetProductId'." }
+    }
 
     $allowed = @('NoSubmission', 'Published', 'PendingCommit', 'CommitStarted', 'PreProcessing', 'Certification', 'Release', 'Publishing')
     if ($CurrentState -notin $allowed) {
@@ -473,6 +484,8 @@ function Invoke-EchoStorePreflight {
     $current = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $ProductId -Environment $Environment -SecretValues $SecretValues
     $verdict = Test-EchoStoreStateSafeToProceed `
         -CurrentState $current.State `
+        -TargetProductId $ProductId `
+        -QueriedProductId $current.QueriedProductId `
         -TargetVersion $TargetVersion `
         -LatestPublishedVersion $current.LatestPublishedVersion `
         -PendingTargetVersion $current.PendingTargetVersion `
@@ -488,6 +501,7 @@ function Invoke-EchoStorePreflight {
     }
 
     return [pscustomobject]@{
+        QueriedProductId = $current.QueriedProductId
         State = $current.State
         LatestPublishedVersion = $current.LatestPublishedVersion
         PendingTargetVersion = $current.PendingTargetVersion

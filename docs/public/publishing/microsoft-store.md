@@ -108,12 +108,14 @@ no secret value is ever committed.
    bundle, then enters the `microsoft-store-production` Environment and runs the
    read-only preflight against Partner Center. The fail-closed state machine
    either reports already published, resumes a pending commit only when it
-   exactly matches the target version/package/hash, uploads a new no-commit
-   draft then commits, or stops without mutation. Commit is never authorised from a
+   exactly matches the configured Product ID and target version/package/hash,
+   uploads a new no-commit draft then commits, or stops without mutation. Commit
+   is never authorised from a
    state-only check: after a no-commit upload the script re-runs the full
    correlation verdict and commits only when it returns the exact `commit-resume`
-   transition (matching Store version, bundle name, package family name and
-   recomputed SHA-256). A published product always requires a valid canonical
+   transition (matching queried Product ID, Store version, bundle name, package
+   family name and recomputed SHA-256). A published product always requires a
+   valid canonical
    latest published version before any upload; only `NoSubmission` may upload
    without a prior version.
 4. Certification may take up to three business days; `store-status.yml`
@@ -132,11 +134,12 @@ no secret value is ever committed.
 
 `delete-target-draft` deletes only a `PendingCommit` draft whose pending target
 version, package family name, package name and SHA-256 **all** exactly match the
-release under recovery, and it is only reachable through the explicit
+release under recovery, with the queried Product ID matching the configured
+Product ID. It is only reachable through the explicit
 `recovery_mode=delete-target-draft` workflow input. It never deletes a
 committed, certifying or differently-versioned submission, and the submit script
-always requires the full correlation (including the recomputed bundle hash) to
-return the strict verdict before deleting.
+always requires the full correlation (including the queried Product ID and
+recomputed bundle hash) to return the strict verdict before deleting.
 
 ## 6. Troubleshooting
 

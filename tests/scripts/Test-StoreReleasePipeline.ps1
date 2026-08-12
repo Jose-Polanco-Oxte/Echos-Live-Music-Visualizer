@@ -9,6 +9,7 @@ param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$testProductId = '9NJMJFH8J616'
 
 $failed = @()
 function Assert-Equal {
@@ -125,13 +126,15 @@ foreach ($case in @(
 }
 
 # transition verdicts
-$upload = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+$upload = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
 Assert-Equal 'upload' $upload.Action 'published -> upload'
 Assert-True $upload.Safe 'published is safe to upload'
 
 # R5: commit-resume requires complete, matching pending identity.
 $resume = Test-EchoStoreStateSafeToProceed `
     -CurrentState 'PendingCommit' `
+    -TargetProductId $testProductId `
+    -QueriedProductId $testProductId `
     -TargetVersion '0.2.19.0' `
     -LatestPublishedVersion '0.2.0.0' `
     -PendingTargetVersion '0.2.19.0' `
@@ -143,18 +146,18 @@ $resume = Test-EchoStoreStateSafeToProceed `
     -TargetPackageFamilyName 'Tun4z.EchoVisualizer_ga3qxkah0cx76'
 Assert-Equal 'commit-resume' $resume.Action 'pendingcommit -> resume'
 Assert-True $resume.Safe 'pendingcommit is safe to resume'
-$resumeIncomplete = Test-EchoStoreStateSafeToProceed -CurrentState 'PendingCommit' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+$resumeIncomplete = Test-EchoStoreStateSafeToProceed -CurrentState 'PendingCommit' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
 Assert-Equal 'fail-closed' $resumeIncomplete.Action 'pendingcommit without identity fails closed'
 
-$monitor = Test-EchoStoreStateSafeToProceed -CurrentState 'Certification' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+$monitor = Test-EchoStoreStateSafeToProceed -CurrentState 'Certification' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
 Assert-Equal 'monitor-only' $monitor.Action 'certification -> monitor'
 Assert-True $monitor.Safe 'certification is safe to monitor'
 
-$monoFail = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.0.0' -LatestPublishedVersion '0.2.0.0'
+$monoFail = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.0.0' -LatestPublishedVersion '0.2.0.0'
 Assert-Equal 'fail-monotonic' $monoFail.Action 'equal published target must fail monotonicity'
 Assert-True (-not $monoFail.Safe) 'equal published target is not safe'
 
-$terminalFail = Test-EchoStoreStateSafeToProceed -CurrentState 'CertificationFailed' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+$terminalFail = Test-EchoStoreStateSafeToProceed -CurrentState 'CertificationFailed' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
 Assert-Equal 'fail-closed' $terminalFail.Action 'terminal failure must fail closed'
 Assert-True (-not $terminalFail.Safe) 'terminal failure is not safe'
 

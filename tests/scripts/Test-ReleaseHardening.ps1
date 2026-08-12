@@ -7,7 +7,7 @@
 #   R4  idempotent stable release recovery; fail-closed conflicts
 #   R5  exact filename -> hash validation in SHA256SUMS.txt
 #   R9  Store state separation (NoSubmission / PendingCommit / active / terminal)
-#   R10 pending-submission correlation with target version/package/hash
+#   R10 pending-submission correlation with target Product ID/version/package/hash
 #   R11 retry classification (429/5xx transient vs auth/validation permanent)
 #   R14 strict Product.props schema parsing
 #
@@ -25,6 +25,7 @@ $fixturesStore = Join-Path $repoRoot 'tests\fixtures\store'
 $modulePath = Join-Path $repoRoot 'scripts\modules\Echo.ReleaseMetadata.psm1'
 $githubModulePath = Join-Path $repoRoot 'scripts\modules\Echo.GitHubRelease.psm1'
 $storeModulePath = Join-Path $repoRoot 'scripts\modules\Echo.StoreSubmission.psm1'
+$testProductId = '9NJMJFH8J616'
 Import-Module $modulePath -Force -DisableNameChecking
 Import-Module $githubModulePath -Force -DisableNameChecking
 Import-Module $storeModulePath -Force -DisableNameChecking
@@ -217,11 +218,15 @@ Write-Host '== R9/R10 Store state + correlation ==' -ForegroundColor Cyan
 # NoSubmission: upload allowed only when target is monotonic higher.
 $verdictNosub = Test-EchoStoreStateSafeToProceed `
     -CurrentState 'NoSubmission' `
+    -TargetProductId $testProductId `
+    -QueriedProductId $testProductId `
     -TargetVersion '0.2.19.0' `
     -LatestPublishedVersion '0.2.0.0'
 Assert-Equal 'upload' $verdictNosub.Action 'NoSubmission uploads a newer target'
 $verdictNosubEqual = Test-EchoStoreStateSafeToProceed `
     -CurrentState 'NoSubmission' `
+    -TargetProductId $testProductId `
+    -QueriedProductId $testProductId `
     -TargetVersion '0.2.0.0' `
     -LatestPublishedVersion '0.2.0.0'
 Assert-Equal 'fail-monotonic' $verdictNosubEqual.Action 'NoSubmission equal target fails monotonicity'
@@ -229,6 +234,8 @@ Assert-Equal 'fail-monotonic' $verdictNosubEqual.Action 'NoSubmission equal targ
 # PendingCommit that exactly matches the target resumes.
 $verdictResume = Test-EchoStoreStateSafeToProceed `
     -CurrentState 'PendingCommit' `
+    -TargetProductId $testProductId `
+    -QueriedProductId $testProductId `
     -TargetVersion '0.2.19.0' `
     -PendingTargetVersion '0.2.19.0' `
     -PendingPackageName 'EchoVisualizer-0.2.0.19-msixbundle.msixbundle' `
@@ -242,6 +249,8 @@ Assert-Equal 'commit-resume' $verdictResume.Action 'exact pending commit resumes
 # PendingCommit with a different version fails closed.
 $verdictConflictVersion = Test-EchoStoreStateSafeToProceed `
     -CurrentState 'PendingCommit' `
+    -TargetProductId $testProductId `
+    -QueriedProductId $testProductId `
     -TargetVersion '0.2.19.0' `
     -PendingTargetVersion '0.2.18.0'
 Assert-Equal 'fail-closed' $verdictConflictVersion.Action 'pending version mismatch fails closed'
@@ -249,6 +258,8 @@ Assert-Equal 'fail-closed' $verdictConflictVersion.Action 'pending version misma
 # PendingCommit with a different bundle name fails closed.
 $verdictConflictBundle = Test-EchoStoreStateSafeToProceed `
     -CurrentState 'PendingCommit' `
+    -TargetProductId $testProductId `
+    -QueriedProductId $testProductId `
     -TargetVersion '0.2.19.0' `
     -PendingTargetVersion '0.2.19.0' `
     -PendingPackageName 'EchoVisualizer-0.2.0.18-msixbundle.msixbundle' `
@@ -256,13 +267,13 @@ $verdictConflictBundle = Test-EchoStoreStateSafeToProceed `
 Assert-Equal 'fail-closed' $verdictConflictBundle.Action 'pending bundle-name mismatch fails closed'
 
 # Active states are monitor-only.
-$verdictActive = Test-EchoStoreStateSafeToProceed -CurrentState 'Certification' -TargetVersion '0.2.19.0'
+$verdictActive = Test-EchoStoreStateSafeToProceed -CurrentState 'Certification' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0'
 Assert-Equal 'monitor-only' $verdictActive.Action 'active states are monitor-only'
 
 # Terminal failures fail closed.
-$verdictFailed = Test-EchoStoreStateSafeToProceed -CurrentState 'CertificationFailed' -TargetVersion '0.2.19.0'
+$verdictFailed = Test-EchoStoreStateSafeToProceed -CurrentState 'CertificationFailed' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0'
 Assert-Equal 'fail-closed' $verdictFailed.Action 'terminal failure fails closed'
-$verdictUnknown = Test-EchoStoreStateSafeToProceed -CurrentState 'Unknown' -TargetVersion '0.2.19.0'
+$verdictUnknown = Test-EchoStoreStateSafeToProceed -CurrentState 'Unknown' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0'
 Assert-Equal 'fail-closed' $verdictUnknown.Action 'unknown state fails closed'
 
 # --- Get-EchoStoreSubmissionState reads the fixture contract ----------------
@@ -274,7 +285,8 @@ Set-EchoStoreCliProcessInvoker -Invoker ([scriptblock]{ param($CliPath, $Argumen
     }
     return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() }
 })
-$state = Get-EchoStoreSubmissionState -CliPath 'fake\msstore.exe' -ProductId '9NJMJFH8J616'
+$state = Get-EchoStoreSubmissionState -CliPath 'fake\msstore.exe' -ProductId $testProductId
+Assert-Equal $testProductId $state.QueriedProductId 'pending state retains queried Product ID'
 Assert-Equal 'PendingCommit' $state.State 'pending state normalized'
 Assert-Equal '0.2.0.0' $state.LatestPublishedVersion 'latest published version separated'
 Assert-Equal '0.2.19.0' $state.PendingTargetVersion 'pending target version separated'
@@ -285,7 +297,8 @@ $nosubJson = Get-Content -LiteralPath (Join-Path $fixturesStore 'state-nosubmiss
 Set-EchoStoreCliProcessInvoker -Invoker ([scriptblock]{ param($CliPath, $Arguments, $Environment)
     return [pscustomobject]@{ ExitCode = 0; Stdout = @($nosubJson); Stderr = @() }
 })
-$nosub = Get-EchoStoreSubmissionState -CliPath 'fake\msstore.exe' -ProductId '9NJMJFH8J616'
+$nosub = Get-EchoStoreSubmissionState -CliPath 'fake\msstore.exe' -ProductId $testProductId
+Assert-Equal $testProductId $nosub.QueriedProductId 'no-submission state retains queried Product ID'
 Assert-Equal 'NoSubmission' $nosub.State 'no-submission fixture normalizes'
 Assert-True (-not $nosub.SubmissionExists) 'no-submission flags no pending submission'
 
@@ -308,19 +321,19 @@ Set-EchoStoreCliProcessInvoker -Invoker $null
 Write-Host '== R4 Published version requirement (post-audit) ==' -ForegroundColor Cyan
 
 # Published with a valid canonical latest version and a newer target uploads.
-$pubOk = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
+$pubOk = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0' -LatestPublishedVersion '0.2.0.0'
 Assert-Equal 'upload' $pubOk.Action 'published with valid version uploads a newer target'
 
 # Published with an empty latest version can never upload (fail closed).
-$pubNoVersion = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.19.0' -LatestPublishedVersion ''
+$pubNoVersion = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0' -LatestPublishedVersion ''
 Assert-Equal 'fail-closed' $pubNoVersion.Action 'published without latest version fails closed, never upload'
 
 # Published with a malformed latest version fails closed.
-$pubMalformed = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetVersion '0.2.19.0' -LatestPublishedVersion 'not.a.version'
+$pubMalformed = Test-EchoStoreStateSafeToProceed -CurrentState 'Published' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0' -LatestPublishedVersion 'not.a.version'
 Assert-Equal 'fail-closed' $pubMalformed.Action 'published with malformed latest version fails closed'
 
 # NoSubmission is the only state that may lack a previous version.
-$nosubNoVersion = Test-EchoStoreStateSafeToProceed -CurrentState 'NoSubmission' -TargetVersion '0.2.19.0' -LatestPublishedVersion ''
+$nosubNoVersion = Test-EchoStoreStateSafeToProceed -CurrentState 'NoSubmission' -TargetProductId $testProductId -QueriedProductId $testProductId -TargetVersion '0.2.19.0' -LatestPublishedVersion ''
 Assert-Equal 'upload' $nosubNoVersion.Action 'NoSubmission may upload without a prior version'
 
 # --- R5: PendingCommit is all-or-nothing -----------------------------------
@@ -335,6 +348,8 @@ function New-PendingSplat {
     )
     return @{
         CurrentState = 'PendingCommit'
+        TargetProductId = $testProductId
+        QueriedProductId = $testProductId
         TargetVersion = '0.2.19.0'
         TargetBundleName = 'EchoVisualizer-0.2.0.19-msixbundle.msixbundle'
         TargetBundleSha256 = '070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e'
@@ -378,6 +393,17 @@ $splat = New-PendingSplat -PendingPackageSha256 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 $mismatchHash = Test-EchoStoreStateSafeToProceed @splat
 Assert-Equal 'fail-closed' $mismatchHash.Action 'mismatched pending hash fails closed'
 
+# Product ID context is part of the correlation contract, not an implicit
+# caller convention.
+$productMismatch = New-PendingSplat
+$productMismatch.QueriedProductId = '9NJMJFH8J616-other'
+$productMismatchVerdict = Test-EchoStoreStateSafeToProceed @productMismatch
+Assert-Equal 'fail-closed' $productMismatchVerdict.Action 'queried Product ID mismatch fails closed'
+$productMissing = New-PendingSplat
+$productMissing.QueriedProductId = ''
+$productMissingVerdict = Test-EchoStoreStateSafeToProceed @productMissing
+Assert-Equal 'fail-closed' $productMissingVerdict.Action 'missing queried Product ID fails closed'
+
 # --- R6/R7: fail-closed cases invoke zero mutators -------------------------
 Write-Host '== R6/R7 Mutation counters (post-audit) ==' -ForegroundColor Cyan
 
@@ -407,6 +433,214 @@ Assert-Equal 0 $script:mutatingCount.publish 'fail-closed preflight never calls 
 Assert-Equal 0 $script:mutatingCount.commit 'fail-closed preflight never calls commit'
 Assert-Equal 0 $script:mutatingCount.del 'fail-closed preflight never calls submission delete'
 Set-EchoStoreCliProcessInvoker -Invoker $null
+
+# --- R6/R7: real caller flow through a fake CLI ----------------------------
+Write-Host '== R6/R7 Caller flow with fake CLI (post-audit) ==' -ForegroundColor Cyan
+
+$callerScript = Join-Path $repoRoot 'scripts\Invoke-MicrosoftStoreRelease.ps1'
+$callerPwsh = (Get-Command pwsh -ErrorAction Stop).Source
+$callerTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("echo-store-caller-" + [guid]::NewGuid().ToString('N'))
+$callerBundleName = 'EchoVisualizer-0.2.0.19-msixbundle.msixbundle'
+$callerBundlePath = Join-Path $callerTempRoot $callerBundleName
+$callerManifestPath = Join-Path $callerTempRoot 'release-manifest.json'
+$callerConfig = Get-EchoDistributionConfiguration
+$callerSecretNames = @(
+    'PARTNER_CENTER_TENANT_ID',
+    'PARTNER_CENTER_SELLER_ID',
+    'PARTNER_CENTER_CLIENT_ID',
+    'PARTNER_CENTER_CLIENT_SECRET'
+)
+$callerPreviousEnvironment = @{}
+
+function Get-CallerVerb {
+    param([string[]]$Arguments)
+    if ($Arguments -contains 'configure') { return 'configure' }
+    if ($Arguments -contains 'publish') { return 'publish' }
+    if ($Arguments -contains 'commit') { return 'commit' }
+    if ($Arguments -contains 'delete') { return 'delete' }
+    if ($Arguments -contains 'get') { return 'get' }
+    return 'unknown'
+}
+
+function Assert-CallerSequence {
+    param(
+        [Parameter(Mandatory)][pscustomobject]$LogHolder,
+        [Parameter(Mandatory)][string[]]$Expected,
+        [Parameter(Mandatory)][string]$Message
+    )
+    $actual = @($LogHolder.Entries | ForEach-Object { Get-CallerVerb -Arguments $_.Arguments })
+    Assert-True (($actual -join ',') -eq ($Expected -join ',')) "$Message (actual: $($actual -join ',') )"
+}
+
+function Assert-CallerProductId {
+    param(
+        [Parameter(Mandatory)][pscustomobject]$LogHolder,
+        [Parameter(Mandatory)][string]$ProductId,
+        [Parameter(Mandatory)][string]$Message
+    )
+    foreach ($entry in $LogHolder.Entries) {
+        $verb = Get-CallerVerb -Arguments $entry.Arguments
+        if ($verb -in @('get', 'publish', 'commit', 'delete')) {
+            $productIdIndex = [Array]::IndexOf([string[]]$entry.Arguments, '--productid')
+            Assert-True ($productIdIndex -ge 0 -and $entry.Arguments[$productIdIndex + 1] -ceq $ProductId) "$Message ($verb)"
+        }
+    }
+}
+
+function New-CallerInvoker {
+    param(
+        [Parameter(Mandatory)][System.Collections.Generic.Queue[string]]$States,
+        [Parameter(Mandatory)][pscustomobject]$LogHolder
+    )
+    $invoker = {
+        param($CliPath, $Arguments, $Environment)
+        $LogHolder.Entries.Add([pscustomobject]@{ Arguments = @($Arguments); Environment = $Environment })
+        $verb = Get-CallerVerb -Arguments $Arguments
+        switch ($verb) {
+            'configure' { return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() } }
+            'get' {
+                if ($States.Count -eq 0) { throw 'fake CLI received an unexpected submission get' }
+                return [pscustomobject]@{ ExitCode = 0; Stdout = @($States.Dequeue()); Stderr = @() }
+            }
+            'publish' { return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() } }
+            'commit' { return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() } }
+            'delete' { return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() } }
+            default { throw "fake CLI received unexpected arguments: $($Arguments -join ' ')" }
+        }
+    }
+    return $invoker.GetNewClosure()
+}
+
+function New-CallerPendingState {
+    param(
+        [Parameter(Mandatory)][string]$Sha256,
+        [string]$PackageName = $callerBundleName
+    )
+    return ([ordered]@{
+        hasSubmission = $true
+        status = 'PendingCommit'
+        latestPublishedVersion = '0.2.0.0'
+        submission = [ordered]@{
+            version = '0.2.19.0'
+            package = [ordered]@{
+                name = $PackageName
+                packageFamilyName = $callerConfig.Store.PackageFamilyName
+                sha256 = $Sha256
+            }
+        }
+    } | ConvertTo-Json -Depth 10 -Compress)
+}
+
+try {
+    New-Item -ItemType Directory -Path $callerTempRoot -Force | Out-Null
+    [System.IO.File]::WriteAllBytes($callerBundlePath, [byte[]](0..31))
+    $callerBundleHash = (Get-FileHash -LiteralPath $callerBundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $callerManifest = [ordered]@{
+        schemaVersion = 1
+        product = [ordered]@{
+            version = $callerConfig.Product.Version
+            coreVersion = $callerConfig.Product.CoreVersion
+            name = $callerConfig.Product.Name
+            publisherDisplayName = $callerConfig.Product.PublisherDisplayName
+            packageIdentityName = $callerConfig.Product.PackageIdentityName
+            packagePublisher = $callerConfig.Product.PackagePublisher
+            applicationId = $callerConfig.Product.ApplicationId
+        }
+        store = [ordered]@{
+            productId = $callerConfig.Store.ProductId
+            packageFamilyName = $callerConfig.Store.PackageFamilyName
+            artifactType = $callerConfig.Store.ArtifactType
+            targetDeviceFamily = $callerConfig.Store.TargetDeviceFamily
+            privacyPolicyUrl = $callerConfig.Store.PrivacyPolicyUrl
+        }
+        assets = @([ordered]@{
+            filename = $callerBundleName
+            mediaRole = 'store-bundle'
+            sizeBytes = (Get-Item -LiteralPath $callerBundlePath).Length
+            sha256 = $callerBundleHash
+        })
+    }
+    [System.IO.File]::WriteAllText($callerManifestPath, ($callerManifest | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+
+    foreach ($name in $callerSecretNames) {
+        $callerPreviousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        [Environment]::SetEnvironmentVariable($name, "test-$name", 'Process')
+    }
+
+    # Successful submit: configure -> preflight get -> publish --noCommit ->
+    # post-publish get -> commit, with Product ID on every Store command.
+    $submitLog = [pscustomobject]@{ Entries = [System.Collections.Generic.List[object]]::new() }
+    $submitStates = [System.Collections.Generic.Queue[string]]::new()
+    $submitStates.Enqueue((Get-Content -LiteralPath (Join-Path $fixturesStore 'state-published.json') -Raw))
+    $submitStates.Enqueue((New-CallerPendingState -Sha256 $callerBundleHash))
+    $submitInvoker = New-CallerInvoker -States $submitStates -LogHolder $submitLog
+    & $callerScript `
+        -Operation 'submit-or-resume' `
+        -ReleaseManifestPath $callerManifestPath `
+        -BundlePath $callerBundlePath `
+        -CliPath $callerPwsh `
+        -CliProcessInvoker $submitInvoker | Out-Null
+    Assert-CallerSequence -LogHolder $submitLog -Expected @('configure', 'get', 'publish', 'get', 'commit') -Message 'successful submit follows the guarded sequence'
+    Assert-CallerProductId -LogHolder $submitLog -ProductId $testProductId -Message 'successful submit preserves Product ID context'
+    $publishCall = @($submitLog.Entries | Where-Object { (Get-CallerVerb -Arguments $_.Arguments) -eq 'publish' })[0]
+    Assert-True ($publishCall.Arguments -contains '--noCommit') 'successful submit uses publish --noCommit'
+
+    # Post-publish mismatch: commit must not be reached after the second get.
+    $postMismatchLog = [pscustomobject]@{ Entries = [System.Collections.Generic.List[object]]::new() }
+    $postMismatchStates = [System.Collections.Generic.Queue[string]]::new()
+    $postMismatchStates.Enqueue((Get-Content -LiteralPath (Join-Path $fixturesStore 'state-published.json') -Raw))
+    $postMismatchStates.Enqueue((New-CallerPendingState -Sha256 ('a' * 64)))
+    $postMismatchInvoker = New-CallerInvoker -States $postMismatchStates -LogHolder $postMismatchLog
+    Assert-Throws {
+        & $callerScript `
+            -Operation 'submit-or-resume' `
+            -ReleaseManifestPath $callerManifestPath `
+            -BundlePath $callerBundlePath `
+            -CliPath $callerPwsh `
+            -CliProcessInvoker $postMismatchInvoker | Out-Null
+    } 'Post-publish correlation failed closed' 'post-publish mismatch fails before commit'
+    Assert-CallerSequence -LogHolder $postMismatchLog -Expected @('configure', 'get', 'publish', 'get') -Message 'post-publish mismatch stops before commit'
+    Assert-CallerProductId -LogHolder $postMismatchLog -ProductId $testProductId -Message 'post-publish mismatch preserves Product ID context'
+
+    # Delete matching draft: delete is allowed only after full correlation.
+    $deleteLog = [pscustomobject]@{ Entries = [System.Collections.Generic.List[object]]::new() }
+    $deleteStates = [System.Collections.Generic.Queue[string]]::new()
+    $deleteStates.Enqueue((New-CallerPendingState -Sha256 $callerBundleHash))
+    $deleteInvoker = New-CallerInvoker -States $deleteStates -LogHolder $deleteLog
+    & $callerScript `
+        -Operation 'delete-target-draft' `
+        -ReleaseManifestPath $callerManifestPath `
+        -BundlePath $callerBundlePath `
+        -CliPath $callerPwsh `
+        -CliProcessInvoker $deleteInvoker | Out-Null
+    Assert-CallerSequence -LogHolder $deleteLog -Expected @('configure', 'get', 'delete') -Message 'matching delete follows the guarded sequence'
+    Assert-CallerProductId -LogHolder $deleteLog -ProductId $testProductId -Message 'matching delete preserves Product ID context'
+
+    # Delete mismatch: submission delete must never be reached.
+    $deleteMismatchLog = [pscustomobject]@{ Entries = [System.Collections.Generic.List[object]]::new() }
+    $deleteMismatchStates = [System.Collections.Generic.Queue[string]]::new()
+    $deleteMismatchStates.Enqueue((New-CallerPendingState -Sha256 ('b' * 64)))
+    $deleteMismatchInvoker = New-CallerInvoker -States $deleteMismatchStates -LogHolder $deleteMismatchLog
+    Assert-Throws {
+        & $callerScript `
+            -Operation 'delete-target-draft' `
+            -ReleaseManifestPath $callerManifestPath `
+            -BundlePath $callerBundlePath `
+            -CliPath $callerPwsh `
+            -CliProcessInvoker $deleteMismatchInvoker | Out-Null
+    } 'Refusing to delete pending draft' 'delete mismatch fails before submission delete'
+    Assert-CallerSequence -LogHolder $deleteMismatchLog -Expected @('configure', 'get') -Message 'delete mismatch stops before delete'
+    Assert-CallerProductId -LogHolder $deleteMismatchLog -ProductId $testProductId -Message 'delete mismatch preserves Product ID context'
+}
+finally {
+    Set-EchoStoreCliProcessInvoker -Invoker $null
+    foreach ($name in $callerSecretNames) {
+        [Environment]::SetEnvironmentVariable($name, $callerPreviousEnvironment[$name], 'Process')
+    }
+    if (Test-Path -LiteralPath $callerTempRoot) {
+        Remove-Item -LiteralPath $callerTempRoot -Recurse -Force
+    }
+}
 
 # --- R11 — retry classification --------------------------------------------
 Write-Host '== R11 Retry classification ==' -ForegroundColor Cyan

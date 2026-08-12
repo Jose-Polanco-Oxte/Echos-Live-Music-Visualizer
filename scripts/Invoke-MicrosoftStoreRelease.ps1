@@ -18,7 +18,11 @@ param(
 
     [Parameter(Mandatory)][string]$ReleaseManifestPath,
     [Parameter(Mandatory)][string]$BundlePath,
-    [string]$CliPath
+    [string]$CliPath,
+
+    # Test-only seam. Production workflows leave this unset and invoke the
+    # pinned CLI process normally.
+    [scriptblock]$CliProcessInvoker
 )
 
 Set-StrictMode -Version Latest
@@ -29,6 +33,9 @@ $modulePath = Join-Path $PSScriptRoot 'modules\Echo.ReleaseMetadata.psm1'
 $submissionModulePath = Join-Path $PSScriptRoot 'modules\Echo.StoreSubmission.psm1'
 Import-Module $modulePath -Force -DisableNameChecking
 Import-Module $submissionModulePath -Force -DisableNameChecking
+if ($CliProcessInvoker) {
+    Set-EchoStoreCliProcessInvoker -Invoker $CliProcessInvoker
+}
 
 $config = Get-EchoDistributionConfiguration
 
@@ -109,6 +116,8 @@ if ($Operation -eq 'delete-target-draft') {
     $current = Get-EchoStoreSubmissionState -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues
     $deleteVerdict = Test-EchoStoreStateSafeToProceed `
         -CurrentState $current.State `
+        -TargetProductId $productId `
+        -QueriedProductId $current.QueriedProductId `
         -TargetVersion $targetVersion `
         -LatestPublishedVersion $current.LatestPublishedVersion `
         -PendingTargetVersion $current.PendingTargetVersion `
@@ -130,7 +139,7 @@ if ($Operation -eq 'delete-target-draft') {
         throw "msstore submission delete failed (exit $($deleteResult.ExitCode))."
     }
     Write-Host 'Target draft deleted.' -ForegroundColor Green
-    exit 0
+    return
 }
 
 # submit-or-resume state machine (D11).
@@ -153,7 +162,7 @@ switch ($preflight.Verdict.Action) {
         Write-Host "Resuming existing pending submission for $targetVersion." -ForegroundColor Cyan
         Invoke-EchoStoreCommit -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues | Out-Null
         Write-Host 'Existing draft committed.' -ForegroundColor Green
-        exit 0
+        return
     }
     'upload' {
         Write-Host "Creating a new draft submission for $targetVersion." -ForegroundColor Cyan
@@ -173,6 +182,8 @@ switch ($preflight.Verdict.Action) {
         # sufficient and could commit a different submission.
         $postVerdict = Test-EchoStoreStateSafeToProceed `
             -CurrentState $verify.State `
+            -TargetProductId $productId `
+            -QueriedProductId $verify.QueriedProductId `
             -TargetVersion $targetVersion `
             -LatestPublishedVersion $verify.LatestPublishedVersion `
             -PendingTargetVersion $verify.PendingTargetVersion `
@@ -188,7 +199,7 @@ switch ($preflight.Verdict.Action) {
 
         Invoke-EchoStoreCommit -CliPath $CliPath -ProductId $productId -Environment $cliEnvironment -SecretValues $secretValues | Out-Null
         Write-Host "Draft uploaded and committed for $targetVersion." -ForegroundColor Green
-        exit 0
+        return
     }
     default {
         throw "Store preflight reported an unhandled action '$($preflight.Verdict.Action)'."

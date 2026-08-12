@@ -59,9 +59,14 @@ evidence:
   marker, a branch, malformed or mismatched commit always **fails closed**.
 - `Published` uploads only when a valid canonical latest published version is
   present; only `NoSubmission` may upload without a prior version.
-- `PendingCommit` commit/delete requires **all** of Store version, bundle name,
-  package family name and recomputed SHA-256 to be present and match the target.
+- `PendingCommit` commit/delete requires **all** of the queried Product ID,
+  Store version, bundle name, package family name and recomputed SHA-256 to be
+  present and match the target.
   Missing or mismatched fields fail closed; partial checks never authorise a
   mutation.
+- `tests/scripts/Test-ReleaseHardening.ps1` exercises the real submission caller
+  with a fake CLI, including successful submit, post-publish commit refusal,
+  matching delete and mismatched-delete refusal, without contacting Partner
+  Center.
 
 See `docs/public/publishing/microsoft-store.md` for the full procedure.
