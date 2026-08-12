@@ -38,7 +38,11 @@ Direct download requiring no formal installation or administrator privileges:
 > **Note on Windows SmartScreen / Code Signing**: Unpackaged standalone builds distributed via GitHub Releases may prompt a Windows SmartScreen warning ("Unknown Publisher") if a commercial certificate is not attached. Click *More info -> Run anyway*. For an unprompted installation experience, use the official Microsoft Store package.
 
 ### 2. Microsoft Store (MSIX / Packaged)
-Recommended channel for secure automatic updates and seamless Store integration. *(Coming soon to the Microsoft Store)*.
+Recommended channel for secure automatic updates and seamless Store integration. Available now on the Microsoft Store:
+
+[![Download from Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-Download-0078D4.svg?style=for-the-badge)](https://apps.microsoft.com/store/detail/9NJMJFH8J616)
+
+Install from the Store for automatic, signed updates on both x64 and ARM64.
 
 ---
 
@@ -137,11 +141,13 @@ the repository.
 .\scripts\Generate-BrandAssets.ps1 -Check
 ```
 
-`build/Product.props` is the canonical official version and product identity.
-The package manifest, Rust package, README badge, and changelog are validated
-projections. Brand assets are deterministically generated from
-`docs/public/Echo-Logo-Large.png` and `build/branding.json`; regenerate them
-with `Generate-BrandAssets.ps1` after an intentional source or recipe change.
+`build/Product.props` is the single versioned source of product identity,
+distribution and branding configuration (schema 1). The package manifest, Rust
+package, README badge, changelog and generated assets are validated projections.
+Brand assets are deterministically generated from
+`docs/public/Echo-Logo-Large.png` and the branding recipes in `Product.props`;
+regenerate them with `Generate-BrandAssets.ps1` after an intentional source or
+recipe change.
 
 ### Microphone Privacy and Theme Behavior
 

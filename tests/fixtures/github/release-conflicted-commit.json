@@ -1,0 +1,36 @@
+{
+  "url": "https://api.github.com/repos/example/repo/releases/101",
+  "id": 101,
+  "tag_name": "v0.2.0.19",
+  "name": "Echo Visualizer v0.2.0.19",
+  "draft": false,
+  "prerelease": false,
+  "target_commitish": "4444444444444444444444444444444444444444",
+  "assets": [
+    {
+      "name": "EchoVisualizer-0.2.0.19-win-x64.zip",
+      "size": 1000,
+      "browser_download_url": "https://github.com/example/repo/releases/download/v0.2.0.19/EchoVisualizer-0.2.0.19-win-x64.zip"
+    },
+    {
+      "name": "EchoVisualizer-0.2.0.19-win-arm64.zip",
+      "size": 1100,
+      "browser_download_url": "https://github.com/example/repo/releases/download/v0.2.0.19/EchoVisualizer-0.2.0.19-win-arm64.zip"
+    },
+    {
+      "name": "EchoVisualizer-0.2.0.19-msixbundle.msixbundle",
+      "size": 33790000,
+      "browser_download_url": "https://github.com/example/repo/releases/download/v0.2.0.19/EchoVisualizer-0.2.0.19-msixbundle.msixbundle"
+    },
+    {
+      "name": "EchoVisualizer-0.2.0.19-release-manifest.json",
+      "size": 2000,
+      "browser_download_url": "https://github.com/example/repo/releases/download/v0.2.0.19/EchoVisualizer-0.2.0.19-release-manifest.json"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 500,
+      "browser_download_url": "https://github.com/example/repo/releases/download/v0.2.0.19/SHA256SUMS.txt"
+    }
+  ]
+}

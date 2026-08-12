@@ -1,0 +1,7 @@
+{
+  "object": {
+    "type": "tag",
+    "sha": "2222222222222222222222222222222222222222",
+    "url": "https://api.github.com/repos/example/repo/git/tags/2222222222222222222222222222222222222222"
+  }
+}

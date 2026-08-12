@@ -1,0 +1,13 @@
+{
+  "hasSubmission": true,
+  "status": "PendingCommit",
+  "latestPublishedVersion": "0.2.0.0",
+  "submission": {
+    "version": "0.2.19.0",
+    "package": {
+      "name": "EchoVisualizer-0.2.0.19-msixbundle.msixbundle",
+      "packageFamilyName": "Tun4z.EchoVisualizer_ga3qxkah0cx76",
+      "sha256": "070e7b1d6a0ebbdb4cde58683ccb75e6d5bbcbd82f4be9948061b456f053928e"
+    }
+  }
+}

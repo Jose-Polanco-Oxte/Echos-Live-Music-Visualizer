@@ -27,6 +27,11 @@ $script:ProjectPath = Join-Path $script:RepoRoot 'src\ui\EchoVisualizer.csproj'
 $script:ManifestPath = Join-Path $script:RepoRoot 'src\ui\Package.appxmanifest'
 $script:ProductValidationPath = Join-Path $script:RepoRoot 'scripts\Test-ProductConfiguration.ps1'
 $script:BrandingGeneratorPath = Join-Path $script:RepoRoot 'scripts\Generate-BrandAssets.ps1'
+$script:ReleaseMetadataModulePath = Join-Path $script:PSScriptRoot 'modules\Echo.ReleaseMetadata.psm1'
+if (-not (Test-Path -LiteralPath $script:ReleaseMetadataModulePath -PathType Leaf)) {
+    throw "Shared distribution configuration parser is missing: $script:ReleaseMetadataModulePath"
+}
+Import-Module $script:ReleaseMetadataModulePath -Force -DisableNameChecking
 $script:ArtifactsRoot = Join-Path $script:RepoRoot 'artifacts'
 $script:ProductMetadata = $null
 $script:BaseProcessEnvironment = @{}
@@ -40,14 +45,11 @@ $RuntimeIdentifiers = @(
         ForEach-Object { $_.Trim() } |
         Where-Object { $_ }
 )
-foreach ($runtimeIdentifier in $RuntimeIdentifiers) {
-    if ($runtimeIdentifier -notin @('win-x64', 'win-arm64')) {
-        throw "Unsupported runtime identifier: $runtimeIdentifier"
-    }
-}
 if ($RuntimeIdentifiers.Count -eq 0) {
     throw 'At least one runtime identifier is required.'
 }
+# Validate the requested RIDs against the centralized configuration AFTER
+# metadata is loaded (metadata loading is deferred to main flow).
 
 function Write-Stage {
     param([Parameter(Mandatory)][string]$Message)
@@ -104,10 +106,14 @@ function ConvertTo-StoreVersion {
     param([Parameter(Mandatory)][string]$Version)
 
     Assert-Version $Version
-    # Microsoft Store requires the package version revision (fourth component)
-    # to be zero, so Store submissions use A.B.C.0 regardless of the declared
-    # product build number.
-    return (($Version.Split('.')[0..2] -join '.') + '.0')
+    # D5: Microsoft requires the fourth Store component to be zero. The store
+    # build S = (C * PackingBase) + D is derived by the shared module so the
+    # mapping stays monotonic and injective for A.B.C.D releases.
+    $packingBase = $script:ProductMetadata.PackingBase
+    if (-not $packingBase) {
+        throw 'Store version packing base must be provided by build/Product.props; no fallback literal is permitted.'
+    }
+    return (Get-EchoStoreVersion -ProductVersion $Version -PackingBase $packingBase)
 }
 
 function Remove-SafeArtifactDirectory {
@@ -238,8 +244,40 @@ function Get-ProductMetadata {
     if (-not (Test-Path -LiteralPath $script:ProductValidationPath -PathType Leaf)) {
         throw "Product configuration validator is missing: $script:ProductValidationPath"
     }
-    $json = & $script:ProductValidationPath -AsJson
-    return ($json | ConvertFrom-Json)
+    if (Test-Path -LiteralPath (Join-Path $script:RepoRoot 'build\branding.json') -PathType Leaf) {
+        throw 'build/branding.json is obsolete; distribution/branding configuration must live only in build/Product.props.'
+    }
+    $metadata = Get-EchoDistributionConfiguration
+    # Preserve the legacy flat view used across the pipeline while the D19
+    # object remains authoritative.
+    return [pscustomobject]@{
+        Version = $metadata.Product.Version
+        CoreVersion = $metadata.Product.CoreVersion
+        DisplayName = $metadata.Product.Name
+        PublisherDisplayName = $metadata.Product.PublisherDisplayName
+        Name = $metadata.Product.PackageIdentityName
+        Publisher = $metadata.Product.PackagePublisher
+        ApplicationId = $metadata.Product.ApplicationId
+        ApplicationIcon = $metadata.Product.ApplicationIcon
+        BackgroundColor = $metadata.Product.BrandBackgroundColor
+        Win32AssemblyIdentityName = $metadata.Product.Win32AssemblyIdentityName
+        Win32AssemblyManifestVersion = $metadata.Product.Win32AssemblyManifestVersion
+        PackingBase = $metadata.Store.Versioning.PackingBase
+        StoreVersion = $metadata.Store.Versioning.StoreVersion
+        ArtifactType = $metadata.Store.ArtifactType
+        Architectures = @(
+            $metadata.Store.Architectures | ForEach-Object {
+                [pscustomobject]@{
+                    Include = $_.Include
+                    RuntimeIdentifier = $_.RuntimeIdentifier
+                    RustTarget = $_.RustTarget
+                    ProcessorArchitecture = $_.ProcessorArchitecture
+                }
+            }
+        )
+        Capabilities = @($metadata.Store.Capabilities | ForEach-Object { $_.Name })
+        IconSizes = @($metadata.Branding.Icon.Sizes)
+    }
 }
 
 function New-VersionedPackageManifest {
@@ -297,14 +335,22 @@ function Resolve-SigningCertificate {
 
 function Get-PlatformForRuntime {
     param([Parameter(Mandatory)][string]$RuntimeIdentifier)
-    if ($RuntimeIdentifier -eq 'win-arm64') { return 'arm64' }
-    return 'x64'
+    foreach ($architecture in @($script:ProductMetadata.Architectures)) {
+        if ($architecture.RuntimeIdentifier -eq $RuntimeIdentifier) {
+            return $architecture.ProcessorArchitecture
+        }
+    }
+    throw "Runtime identifier '$RuntimeIdentifier' is not declared in build/Product.props."
 }
 
 function Get-RustTargetForRuntime {
     param([Parameter(Mandatory)][string]$RuntimeIdentifier)
-    if ($RuntimeIdentifier -eq 'win-arm64') { return 'aarch64-pc-windows-msvc' }
-    return 'x86_64-pc-windows-msvc'
+    foreach ($architecture in @($script:ProductMetadata.Architectures)) {
+        if ($architecture.RuntimeIdentifier -eq $RuntimeIdentifier) {
+            return $architecture.RustTarget
+        }
+    }
+    throw "Runtime identifier '$RuntimeIdentifier' is not declared in build/Product.props."
 }
 
 function Assert-PeArchitecture {
@@ -355,8 +401,15 @@ function Invoke-BrandAssetCheck {
 function Assert-IcoFrames {
     param(
         [Parameter(Mandatory)][string]$Path,
-        [int[]]$ExpectedSizes = @(16, 20, 24, 32, 40, 48, 64, 128, 256)
+        [int[]]$ExpectedSizes
     )
+
+    if (-not $ExpectedSizes) {
+        $ExpectedSizes = @($script:ProductMetadata.IconSizes)
+        if (-not $ExpectedSizes) {
+            throw 'Application icon sizes must be provided by build/Product.props; no fallback literal is permitted.'
+        }
+    }
 
     Assert-FileExists $Path
     $stream = [System.IO.File]::OpenRead($Path)
@@ -585,6 +638,65 @@ function Assert-PriResources {
     }
 }
 
+function Build-StoreBundle {
+    param(
+        [Parameter(Mandatory)][hashtable]$ArchitecturePackages,
+        [Parameter(Mandatory)][string]$StoreVersion,
+        [Parameter(Mandatory)][string]$MakeAppxPath
+    )
+
+    Write-Stage "Bundling Store MSIX packages (version $StoreVersion)"
+    $stagingRoot = Join-Path $script:ArtifactsRoot '.staging\bundle'
+    Remove-SafeArtifactDirectory $stagingRoot
+    New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
+
+    try {
+        $productVersion = $script:ProductMetadata.Version
+        # Artifact type is schema-enforced (required enum) so no fallback literal
+        # is permitted; a missing value must fail closed.
+        $artifactType = $script:ProductMetadata.ArtifactType
+        if (-not $artifactType) { throw 'Store artifact type is missing from build/Product.props.' }
+        $bundleName = "EchoVisualizer-$productVersion-$artifactType.$artifactType"
+        $stagingFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -ErrorAction SilentlyContinue)
+        if ($stagingFiles.Count -gt 0) {
+            throw 'Bundle staging directory must be empty before staging MSIX packages.'
+        }
+
+        foreach ($runtimeIdentifier in $ArchitecturePackages.Keys) {
+            $packagePath = $ArchitecturePackages[$runtimeIdentifier]
+            if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf)) {
+                throw ("Store MSIX package is missing for {0}: {1}" -f $runtimeIdentifier, $packagePath)
+            }
+            Copy-Item -LiteralPath $packagePath -Destination (Join-Path $stagingRoot (Split-Path $packagePath -Leaf))
+        }
+
+        $stagedPackages = @(Get-ChildItem -LiteralPath $stagingRoot -Filter '*.msix' -File)
+        if ($stagedPackages.Count -ne 2) {
+            throw "Expected exactly two staged MSIX packages for bundling; found $($stagedPackages.Count)."
+        }
+
+        $outputDirectory = Join-Path $script:ArtifactsRoot 'store'
+        Remove-SafeArtifactDirectory $outputDirectory
+        New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+        $bundlePath = Join-Path $outputDirectory $bundleName
+        # /bv is mandatory so the bundle version is a deterministic derivation
+        # of the Store version rather than an implicit MakeAppx calculation.
+        Invoke-NativeTool $MakeAppxPath @('bundle', '/d', $stagingRoot, '/p', $bundlePath, '/bv', $StoreVersion, '/o')
+        if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
+            throw "MakeAppx did not produce the expected Store bundle: $bundlePath"
+        }
+
+        $bundleHash = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $bundleSize = (Get-Item -LiteralPath $bundlePath).Length
+        Write-Host "Store bundle produced: $bundlePath ($bundleSize bytes)" -ForegroundColor Green
+        Write-Host "Store bundle SHA-256: $bundleHash" -ForegroundColor DarkGray
+        return [pscustomobject]@{ Path = $bundlePath; Sha256 = $bundleHash; SizeBytes = $bundleSize; Name = $bundleName }
+    }
+    finally {
+        Remove-SafeArtifactDirectory $stagingRoot
+    }
+}
+
 function Build-GitHubDistribution {
     param(
         [Parameter(Mandatory)][string]$RuntimeIdentifier,
@@ -645,7 +757,10 @@ function Expand-StorePackage {
     New-Item -ItemType Directory -Path $packageDirectory, $aggregateAssetsDirectory | Out-Null
 
     try {
-        $isBundle = ($PackagePath -like '*.msixbundle') -or ($PackagePath -like '*.appxbundle')
+        # Bundle detection comes from the centralized artifact type (R13).
+        $storeArtifactType = $script:ProductMetadata.ArtifactType
+        if (-not $storeArtifactType) { throw 'Store artifact type is missing from build/Product.props.' }
+        $isBundle = ($PackagePath -like "*.$storeArtifactType")
         if ($isBundle) {
             $bundleDirectory = Join-Path $temporaryRoot 'bundle'
             New-Item -ItemType Directory -Path $bundleDirectory -Force | Out-Null
@@ -766,7 +881,8 @@ function Assert-MsixManifest {
 
     $capabilities = $manifest.SelectNodes('/*[local-name()="Package"]/*[local-name()="Capabilities"]/*') |
         ForEach-Object { $_.Name }
-    foreach ($requiredCapability in @('runFullTrust', 'microphone')) {
+    $requiredCapabilities = @($script:ProductMetadata.Capabilities)
+    foreach ($requiredCapability in $requiredCapabilities) {
         if ($capabilities -notcontains $requiredCapability) {
             throw "MSIX package is missing capability '$requiredCapability'."
         }
@@ -956,6 +1072,13 @@ try {
 
     $manifestMetadata = Get-ProductMetadata
     $script:ProductMetadata = $manifestMetadata
+    # R13: every requested runtime identifier must be declared in Product.props.
+    $configuredRids = @($manifestMetadata.Architectures | ForEach-Object { $_.RuntimeIdentifier })
+    foreach ($runtimeIdentifier in $RuntimeIdentifiers) {
+        if ($runtimeIdentifier -notin $configuredRids) {
+            throw "Runtime identifier '$runtimeIdentifier' is not declared in build/Product.props; declared: '$($configuredRids -join ', ')'."
+        }
+    }
     Invoke-BrandAssetCheck
     Assert-IcoFrames -Path (Join-Path $script:RepoRoot 'src\ui\Assets\AppIcon.ico')
     if (-not $PackageVersion) { $PackageVersion = $manifestMetadata.Version }
@@ -1011,16 +1134,28 @@ try {
         }
     }
 
-    $storeBundles = @{}
+    $storePackages = @{}
+    $storeBundleResult = $null
     if ($Profile -in @('Store', 'Both')) {
         foreach ($runtimeIdentifier in $RuntimeIdentifiers) {
-            $storeBundles[$runtimeIdentifier] = Build-StoreDistribution `
+            $storePackages[$runtimeIdentifier] = Build-StoreDistribution `
                 -RuntimeIdentifier $runtimeIdentifier `
                 -Version $StoreVersion `
                 -MakeAppxPath $makeAppxPath `
                 -ManifestMetadata $manifestMetadata `
                 -SigningCertificate $signingCertificate
         }
+        $storeBundleResult = Build-StoreBundle `
+            -ArchitecturePackages $storePackages `
+            -StoreVersion $StoreVersion `
+            -MakeAppxPath $makeAppxPath
+        $artifactValidator = Join-Path $script:RepoRoot 'scripts\Test-StoreReleaseArtifact.ps1'
+        if (-not (Test-Path -LiteralPath $artifactValidator -PathType Leaf)) {
+            throw "Store artifact validator is missing: $artifactValidator"
+        }
+        & $artifactValidator `
+            -BundlePath $storeBundleResult.Path `
+            -ExpectedProductVersion $manifestMetadata.Version | Out-Null
     }
 
     if ($SmokeTest) {
@@ -1029,14 +1164,14 @@ try {
         }
         if ($InstallMsix) {
             Install-AndSmokeTestMsix `
-                -BundlePath $storeBundles['win-x64'] `
+                -BundlePath $storeBundleResult.Path `
                 -ManifestMetadata $manifestMetadata `
                 -ExpectedVersion $StoreVersion
         }
     }
     elseif ($InstallMsix) {
-        Write-Stage "Installing x64 MSIX version $StoreVersion"
-        Add-AppxPackage -Path $storeBundles['win-x64'] -ForceApplicationShutdown -ForceUpdateFromAnyVersion
+        Write-Stage "Installing x64/ARM64 bundle version $StoreVersion"
+        Add-AppxPackage -Path $storeBundleResult.Path -ForceApplicationShutdown -ForceUpdateFromAnyVersion
     }
 
     Write-Host "`nDistribution pipeline completed successfully." -ForegroundColor Green

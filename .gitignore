@@ -39,9 +39,39 @@ BundleArtifacts/
 .env.*
 secrets/
 
-# Agent & Internal directories
+# Agent operational contracts and local state
 docs/private/
-.agents/
+.agents/*
+!.agents/AGENTS.md
+!.agents/context/
+!.agents/context/**
+!.agents/rules/
+!.agents/rules/**
+!.agents/skills/
+!.agents/skills/**
+!.agents/roles/
+!.agents/roles/**
+!.agents/tools/
+!.agents/tools/scripts/
+!.agents/tools/scripts/*.ps1
+!.agents/tools/scripts/benchmarks/
+.agents/tools/scripts/benchmarks/*
+!.agents/tools/scripts/benchmarks/README.md
+!.agents/tools/scripts/benchmarks/dsp-offline/
+!.agents/tools/scripts/benchmarks/dsp-offline/Cargo.toml
+!.agents/tools/scripts/benchmarks/dsp-offline/Cargo.lock
+!.agents/tools/scripts/benchmarks/dsp-offline/src/
+!.agents/tools/scripts/benchmarks/dsp-offline/src/**
+.agents/tools/scripts/benchmarks/**/target/
+.agents/tools/scripts/benchmarks/results-local/
+.agents/tools/scripts/scratch/
+.agents/**/bin/
+.agents/**/obj/
+.agents/skills/**/__pycache__/
+.agents/skills/**/*.pyc
+!.agents/state/
+.agents/state/*
+!.agents/state/PROJECT-HANDOFF.template.md
 docs/internal/
 docs/secret/
 docs/industrial/

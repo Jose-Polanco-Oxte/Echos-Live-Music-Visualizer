@@ -17,39 +17,114 @@ concurrency:
 jobs:
   lint-workflows:
     name: Lint GitHub Actions Workflows
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Install actionlint
+      - name: Install Pinned actionlint
         shell: pwsh
         run: |
-          winget install --id rhysd.actionlint --exact --source winget `
-            --accept-source-agreements --accept-package-agreements --silent
-
-          $actionlintFiles = @(
-            Get-ChildItem -Path "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" `
-              -Filter actionlint.exe -Recurse -File -ErrorAction SilentlyContinue
-          )
-          if ($actionlintFiles.Count -ne 1) {
-            throw "Expected exactly one actionlint executable, found $($actionlintFiles.Count)."
+          $version = '1.7.12'
+          $sha256 = '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
+          $asset = "actionlint_${version}_linux_amd64.tar.gz"
+          $url = "https://github.com/rhysd/actionlint/releases/download/v$version/$asset"
+          $archive = Join-Path $env:RUNNER_TEMP $asset
+          Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $sha256) {
+            throw "actionlint digest mismatch. Expected $sha256, found $actual."
           }
-
-          $actionlintFiles[0].DirectoryName >> $env:GITHUB_PATH
+          $toolDir = Join-Path $env:RUNNER_TEMP 'actionlint'
+          New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
+          tar -xzf $archive -C $toolDir
+          $actionlint = Join-Path $toolDir 'actionlint'
+          if (-not (Test-Path -LiteralPath $actionlint)) {
+            throw "The pinned actionlint archive did not contain $actionlint."
+          }
+          chmod +x $actionlint
+          & $actionlint -version
 
       - name: Run actionlint
         shell: pwsh
-        run: actionlint
+        run: |
+          $actionlint = Join-Path $env:RUNNER_TEMP 'actionlint/actionlint'
+          if (-not (Test-Path -LiteralPath $actionlint)) {
+            throw "Pinned actionlint executable was not found at $actionlint."
+          }
+          & $actionlint
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Audit Distribution Literal Duplicates
+        shell: pwsh
+        run: |
+          $configJson = ./scripts/Test-ProductConfiguration.ps1 -AsJson | ConvertFrom-Json
+          # Packing base is a schema-1 normative constant enforced by the parser
+          # (D6) and icon sizes are validated structurally by the regression
+          # harness; both are intentionally excluded from this grep audit.
+          # Arbitrary numeric substrings would be collision-prone here.
+          $literals = @(
+            @{ Label = 'store.productId'; Value = [string]$configJson.store.productId },
+            @{ Label = 'store.packageFamilyName'; Value = [string]$configJson.store.packageFamilyName },
+            @{ Label = 'store.capabilities'; Value = [string]($configJson.store.capabilities | ForEach-Object { $_.name }) -join ',' },
+            @{ Label = 'store.architectures'; Value = [string]($configJson.store.architectures | ForEach-Object { $_.runtimeIdentifier }) -join ',' },
+            @{ Label = 'tooling.msstore.version'; Value = [string]$configJson.tooling.msstore.version },
+            @{ Label = 'tooling.msstore.assetName'; Value = [string]$configJson.tooling.msstore.assetName },
+            @{ Label = 'tooling.msstore.sha256'; Value = [string]$configJson.tooling.msstore.sha256 }
+          ) | Where-Object { $_.Value }
+          # The artifact type appears structurally as a glob in workflows
+          # (*.msixbundle) so it is only scanned in operational scripts.
+          $artifactTypeLiteral = @{ Label = 'store.artifactType'; Value = [string]$configJson.store.artifactType }
+          # Operational code paths that must consume configuration rather than
+          # hard-code it: product scripts (excluding the shared module, which
+          # defines the schema), workflows and composite actions. Comment-only
+          # lines are documentation, not active duplication; matching uses word
+          # boundaries so short values inside hashes/versions do not count.
+          $targets = @()
+          $targets += Get-ChildItem 'scripts' -Recurse -File -Include *.ps1 -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch 'modules\\' }
+          $targets += Get-ChildItem '.github' -Recurse -File -Include *.yml,*.yaml -ErrorAction SilentlyContinue
+          $violations = @()
+          foreach ($file in $targets) {
+            $rel = $file.FullName.Replace((Get-Location).Path + '\', '')
+            $lineNumber = 0
+            foreach ($line in Get-Content -LiteralPath $file.FullName) {
+              $lineNumber++
+              $trimmed = $line.TrimStart()
+              if ($trimmed.StartsWith('#') -or $trimmed.StartsWith('<!--') -or $trimmed.StartsWith('//')) { continue }
+              foreach ($entry in $literals) {
+                foreach ($singleValue in @($entry.Value -split ',')) {
+                  $pattern = '(?<![\w])' + [regex]::Escape($singleValue) + '(?![\w])'
+                  if ([regex]::IsMatch($line, $pattern)) {
+                    $violations += ("$($entry.Label)='$singleValue' at $rel`:$lineNumber")
+                  }
+                }
+              }
+              if ($file.Extension -eq '.ps1') {
+                $pattern = '(?<![\w.])' + [regex]::Escape($artifactTypeLiteral.Value) + '(?![\w])'
+                if ([regex]::IsMatch($line, $pattern)) {
+                  $violations += ("$($artifactTypeLiteral.Label)='$($artifactTypeLiteral.Value)' at $rel`:$lineNumber")
+                }
+              }
+            }
+          }
+          $violations = $violations | Sort-Object -Unique
+          if ($violations.Count -gt 0) {
+            $violations | ForEach-Object { Write-Host "DIST-LITERAL: $_" }
+            throw "Configurable distribution literals must not be duplicated in operational scripts/workflows; read them from build/Product.props."
+          }
+          Write-Host 'Distribution literal audit: PASS'
 
   verify:
     name: Test, Publish and Validate Distributions
-    runs-on: windows-latest
+    runs-on: windows-2025
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup pinned build toolchain
         uses: ./.github/actions/setup-windows-build

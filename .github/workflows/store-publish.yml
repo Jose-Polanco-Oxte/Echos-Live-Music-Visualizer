@@ -1,0 +1,245 @@
+name: Microsoft Store Release Deployment
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing stable release tag (vA.B.C.D) to validate and submit'
+        required: true
+        type: string
+      recovery_mode:
+        description: 'Optional destructive recovery (delete target draft)'
+        required: false
+        type: choice
+        options:
+          - none
+          - delete-target-draft
+        default: none
+
+# D10 serialization: a newer production run waits instead of canceling a run
+# that may already have created or committed a remote submission.
+concurrency:
+  group: microsoft-store-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-release:
+    name: Resolve and Validate Stable Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.resolve.outputs.tag_name }}
+      version: ${{ steps.resolve.outputs.version }}
+      tag_sha: ${{ steps.resolve.outputs.tag_sha }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Resolve Stable Release
+        id: resolve
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
+          $tagName = if ($env:EVENT_NAME -eq 'release') { $env:EVENT_TAG } else { $env:INPUT_TAG.Trim() }
+          if (-not $tagName) { throw 'A release tag is required.' }
+          if ($tagName -notmatch '^v(?<version>\d+\.\d+\.\d+\.\d+)$') {
+            throw "Release tag must use vA.B.C.D: $tagName"
+          }
+          $productVersion = $Matches.version
+
+          # Only a published, non-draft, non-prerelease stable release qualifies.
+          $releaseInfo = Get-EchoGitHubReleaseByTag -Repository $env:REPO -Tag $tagName
+          if (-not $releaseInfo) { throw "Release $tagName was not found." }
+          if ($releaseInfo.draft -eq $true) { throw "Release $tagName is a draft; production Store CD is not allowed." }
+          if ($releaseInfo.prerelease -eq $true) { throw "Release $tagName is a prerelease; production Store CD is not allowed." }
+
+          # R3/R8: the source SHA is the resolved commit for the tag, never
+          # target_commitish (which may be a branch name or an older commit).
+          $sha = Resolve-EchoTagCommitSha -Repository $env:REPO -Tag $tagName
+
+          # Verify release asset set includes the Store bundle and manifest.
+          $remoteAssets = @(Get-EchoReleaseAssetSet -ReleaseInfo $releaseInfo)
+          $remoteNames = @($remoteAssets | ForEach-Object { $_.name })
+          $expectedAssets = @(
+            "EchoVisualizer-$productVersion-msixbundle.msixbundle",
+            "EchoVisualizer-$productVersion-release-manifest.json",
+            'SHA256SUMS.txt'
+          )
+          foreach ($expected in $expectedAssets) {
+            if ($remoteNames -notcontains $expected) {
+              throw "Release $tagName is missing expected Store asset '$expected'."
+            }
+          }
+
+          'tag_name=' + $tagName >> $env:GITHUB_OUTPUT
+          'version=' + $productVersion >> $env:GITHUB_OUTPUT
+          'tag_sha=' + $sha >> $env:GITHUB_OUTPUT
+
+  validate-package:
+    name: Validate Downloadable Store Package
+    needs: resolve-release
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout Source SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve-release.outputs.tag_sha }}
+
+      - name: Download Store Bundle Asset
+        id: download
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+        run: |
+          gh release download "$env:TAG_NAME" `
+            -p 'EchoVisualizer-*msixbundle.msixbundle' `
+            -p 'EchoVisualizer-*release-manifest.json' `
+            -D artifacts
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to download Store release assets.' }
+
+      - name: Validate Bundle and Manifest
+        shell: pwsh
+        run: >
+          ./scripts/Test-StoreReleaseArtifact.ps1
+          -BundlePath (Get-ChildItem 'artifacts/*.msixbundle' -File | Select-Object -First 1).FullName
+          -ExpectedProductVersion ${{ needs.resolve-release.outputs.version }}
+          -ReleaseManifestPath (Get-ChildItem 'artifacts/*release-manifest.json' -File | Select-Object -First 1).FullName
+
+      - name: Verify Bundle SHA Against Release Checksums
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+        run: |
+          # R5: SHA256SUMS.txt is validated by the exact name -> hash pair, not by
+          # matching a bare hash on any line.
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
+          gh release download "$env:TAG_NAME" -p 'SHA256SUMS.txt' -D artifacts --clobber
+          $bundle = @(Get-ChildItem 'artifacts/*.msixbundle' -File)
+          if ($bundle.Count -ne 1) { throw 'Expected exactly one Store bundle in downloaded assets.' }
+          $actual = (Get-FileHash $bundle[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sumsText = Get-Content 'artifacts/SHA256SUMS.txt' -Raw
+          $null = Test-EchoChecksumPair -ChecksumsContent $sumsText -FileName $bundle[0].Name -ActualSha256 $actual
+          Write-Host "Bundle SHA-256 $actual verified against release checksums by exact file name."
+
+      - name: Upload Store Bundle to Submit Job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: store-submit-payload
+          path: |
+            artifacts/*.msixbundle
+            artifacts/*release-manifest.json
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+
+  submit-or-resume:
+    name: Submit or Resume Store Submission
+    needs: [resolve-release, validate-package]
+    runs-on: windows-2025
+    environment: microsoft-store-production
+    concurrency:
+      group: microsoft-store-production-submit
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout Source SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve-release.outputs.tag_sha }}
+
+      - name: Setup pinned build toolchain
+        uses: ./.github/actions/setup-windows-build
+        with:
+          rust-targets: x86_64-pc-windows-msvc
+
+      - name: Download Store Bundle Payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: store-submit-payload
+          path: payload
+          merge-multiple: true
+
+      - name: Verify Downloaded Payload Hashes
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+        run: |
+          # R5/R7/R8: recompute the hash of the exact downloaded bundle and
+          # require it to match the manifest record and the SHA256SUMS.txt pair
+          # before any Store mutation.
+          Import-Module ./scripts/modules/Echo.GitHubRelease.psm1 -Force -DisableNameChecking
+          $bundle = @(Get-ChildItem 'payload/*.msixbundle' -File)
+          if ($bundle.Count -ne 1) { throw 'Expected exactly one Store bundle payload.' }
+          $actualHash = (Get-FileHash -LiteralPath $bundle[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sumsText = Get-Content -LiteralPath 'payload/SHA256SUMS.txt' -Raw
+          $null = Test-EchoChecksumPair -ChecksumsContent $sumsText -FileName $bundle[0].Name -ActualSha256 $actualHash
+
+          $manifest = @(Get-ChildItem 'payload/*release-manifest.json' -File)
+          if ($manifest.Count -ne 1) { throw 'Expected exactly one release manifest payload.' }
+          $manifestDoc = Get-Content -LiteralPath $manifest[0].FullName -Raw | ConvertFrom-Json
+          $storeAssets = @($manifestDoc.assets | Where-Object { $_.mediaRole -eq 'store-bundle' })
+          $bundleRecord = $storeAssets | Where-Object { $_.filename -eq $bundle[0].Name }
+          if (-not $bundleRecord) {
+            throw "Release manifest does not record '$($bundle[0].Name)' as a store-bundle asset."
+          }
+          if ([string]$bundleRecord.sha256 -cne $actualHash) {
+            throw "Downloaded bundle hash $actualHash does not match the release manifest record."
+          }
+          if ([long]$bundleRecord.sizeBytes -ne $bundle[0].Length) {
+            throw "Downloaded bundle size does not match the release manifest record."
+          }
+          Write-Host "Payload bundle verified against manifest and exact checksum pair."
+
+      - name: Install Pinned Store CLI
+        shell: pwsh
+        run: ./scripts/Install-MicrosoftStoreCli.ps1 -InstallDotnetSdk
+
+      - name: Configure and Submit to Microsoft Store
+        shell: pwsh
+        env:
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+          RECOVERY_MODE: ${{ inputs.recovery_mode }}
+        run: |
+          $bundle = Get-ChildItem 'payload/*.msixbundle' -File | Select-Object -First 1
+          $manifest = Get-ChildItem 'payload/*release-manifest.json' -File | Select-Object -First 1
+          $operation = if ($env:RECOVERY_MODE -eq 'delete-target-draft') { 'delete-target-draft' } else { 'submit-or-resume' }
+          Write-Host "Store operation: $operation"
+          ./scripts/Invoke-MicrosoftStoreRelease.ps1 `
+            -Operation $operation `
+            -ReleaseManifestPath $manifest.FullName `
+            -BundlePath $bundle.FullName
+
+      - name: Retain Sanitized Submission Report
+        shell: pwsh
+        run: |
+          $config = ./scripts/Test-ProductConfiguration.ps1 -AsJson | ConvertFrom-Json
+          $report = [ordered]@{
+            release = '${{ needs.resolve-release.outputs.tag_name }}'
+            version = '${{ needs.resolve-release.outputs.version }}'
+            tagSha = '${{ needs.resolve-release.outputs.tag_sha }}'
+            productId = $config.store.productId
+            packageFamilyName = $config.store.packageFamilyName
+            status = 'SUBMITTED'
+            workflowRun = '${{ github.run_id }}'
+          }
+          $report | ConvertTo-Json | Set-Content 'payload/submission-summary.json'
+
+      - name: Upload Sanitized Report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: store-submission-report
+          path: payload/submission-summary.json
+          if-no-files-found: ignore

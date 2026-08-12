@@ -5,6 +5,13 @@ All notable changes to **Echo Live Music Visualizer** will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0.19] - 2026-08-11
+### Added
+- **Microsoft Store publication.** The Store version `0.2.0.0` (revision zero,
+  derived from product `0.2.0.19`) passed certification and is live on the
+  Microsoft Store: https://apps.microsoft.com/store/detail/9NJMJFH8J616.
+  Install from the Store for signed, automatic updates on x64 and ARM64.
+
 ## [0.2.0.19] - 2026-08-09
 ### Fixed
 - Fixed `AudioEngine::reconfigure` to be transactional regarding the WASAPI
