@@ -716,6 +716,8 @@ $installerErrors = $null
 Assert-Equal 0 $installerErrors.Count 'Install-MicrosoftStoreCli.ps1 parses with zero errors'
 $installerText = Get-Content -Raw $installerPath
 Assert-True ($installerText -notmatch '`$\x7B?expectedVersion:') 'no broken $expectedVersion: interpolation remains in the installer'
+Assert-True ($installerText -match 'Copy-Item -Path.*extractRoot.*cliRoot.*-Recurse.*-Force') 'CLI installer preserves the complete extracted payload'
+Assert-True ($installerText -notmatch 'Copy-Item -LiteralPath \$cliCandidate\.FullName') 'CLI installer does not copy only the apphost executable'
 
 # ---------------------------------------------------------------------------
 # R13 — config-derived projections (no active duplicate literals)
