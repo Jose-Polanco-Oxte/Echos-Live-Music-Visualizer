@@ -102,10 +102,16 @@ if (-not $cliCandidate) {
 
 $cliRoot = Join-Path $downloadRoot ('cli-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $cliRoot -Force | Out-Null
-Copy-Item -LiteralPath $cliCandidate.FullName -Destination (Join-Path $cliRoot 'msstore.exe') -Force
+# msstore.exe is a native apphost that loads msstore.dll and the published
+# dependency graph from its application directory. Copy the complete extracted
+# payload instead of only the executable, preserving the candidate's relative
+# path for archives that place the app in a subdirectory.
+Copy-Item -Path (Join-Path $extractRoot '*') -Destination $cliRoot -Recurse -Force
+$relativeCliPath = [System.IO.Path]::GetRelativePath($extractRoot, $cliCandidate.FullName)
+$cliPath = Join-Path $cliRoot $relativeCliPath
 
 # Smoke test the exact pinned version.
-$versionOutput = (& (Join-Path $cliRoot 'msstore.exe') --version 2>&1) -join ' '
+$versionOutput = (& $cliPath --version 2>&1) -join ' '
 if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch [regex]::Escape($expectedVersion)) {
     throw "msstore --version did not report the pinned version '$expectedVersion': $versionOutput"
 }
@@ -114,7 +120,7 @@ Write-Host "msstore CLI v$expectedVersion installed at $cliRoot" -ForegroundColo
 [pscustomobject]@{
     Version = $expectedVersion
     ArchiveSha256 = $actualSha256
-    CliPath = (Join-Path $cliRoot 'msstore.exe')
+    CliPath = $cliPath
     CliRoot = $cliRoot
     DotNetSdk = $cli.DotNetSdkVersion
 }
