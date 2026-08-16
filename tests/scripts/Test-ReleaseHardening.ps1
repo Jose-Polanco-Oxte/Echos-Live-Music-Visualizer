@@ -454,7 +454,7 @@ $callerPreviousEnvironment = @{}
 
 function Get-CallerVerb {
     param([string[]]$Arguments)
-    if ($Arguments -contains 'configure') { return 'configure' }
+    if ($Arguments -contains 'reconfigure') { return 'reconfigure' }
     if ($Arguments -contains 'publish') { return 'publish' }
     if ($Arguments -contains 'commit') { return 'commit' }
     if ($Arguments -contains 'delete') { return 'delete' }
@@ -497,7 +497,7 @@ function New-CallerInvoker {
         $LogHolder.Entries.Add([pscustomobject]@{ Arguments = @($Arguments); Environment = $Environment })
         $verb = Get-CallerVerb -Arguments $Arguments
         switch ($verb) {
-            'configure' { return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() } }
+            'reconfigure' { return [pscustomobject]@{ ExitCode = 0; Stdout = @('{}'); Stderr = @() } }
             'get' {
                 if ($States.Count -eq 0) { throw 'fake CLI received an unexpected submission get' }
                 return [pscustomobject]@{ ExitCode = 0; Stdout = @($States.Dequeue()); Stderr = @() }
@@ -580,7 +580,7 @@ try {
         -BundlePath $callerBundlePath `
         -CliPath $callerPwsh `
         -CliProcessInvoker $submitInvoker | Out-Null
-    Assert-CallerSequence -LogHolder $submitLog -Expected @('configure', 'get', 'publish', 'get', 'commit') -Message 'successful submit follows the guarded sequence'
+    Assert-CallerSequence -LogHolder $submitLog -Expected @('reconfigure', 'get', 'publish', 'get', 'commit') -Message 'successful submit follows the guarded sequence'
     Assert-CallerProductId -LogHolder $submitLog -ProductId $testProductId -Message 'successful submit preserves Product ID context'
     $publishCall = @($submitLog.Entries | Where-Object { (Get-CallerVerb -Arguments $_.Arguments) -eq 'publish' })[0]
     Assert-True ($publishCall.Arguments -contains '--noCommit') 'successful submit uses publish --noCommit'
@@ -599,7 +599,7 @@ try {
             -CliPath $callerPwsh `
             -CliProcessInvoker $postMismatchInvoker | Out-Null
     } 'Post-publish correlation failed closed' 'post-publish mismatch fails before commit'
-    Assert-CallerSequence -LogHolder $postMismatchLog -Expected @('configure', 'get', 'publish', 'get') -Message 'post-publish mismatch stops before commit'
+    Assert-CallerSequence -LogHolder $postMismatchLog -Expected @('reconfigure', 'get', 'publish', 'get') -Message 'post-publish mismatch stops before commit'
     Assert-CallerProductId -LogHolder $postMismatchLog -ProductId $testProductId -Message 'post-publish mismatch preserves Product ID context'
 
     # Delete matching draft: delete is allowed only after full correlation.
@@ -613,7 +613,7 @@ try {
         -BundlePath $callerBundlePath `
         -CliPath $callerPwsh `
         -CliProcessInvoker $deleteInvoker | Out-Null
-    Assert-CallerSequence -LogHolder $deleteLog -Expected @('configure', 'get', 'delete') -Message 'matching delete follows the guarded sequence'
+    Assert-CallerSequence -LogHolder $deleteLog -Expected @('reconfigure', 'get', 'delete') -Message 'matching delete follows the guarded sequence'
     Assert-CallerProductId -LogHolder $deleteLog -ProductId $testProductId -Message 'matching delete preserves Product ID context'
 
     # Delete mismatch: submission delete must never be reached.
@@ -629,7 +629,7 @@ try {
             -CliPath $callerPwsh `
             -CliProcessInvoker $deleteMismatchInvoker | Out-Null
     } 'Refusing to delete pending draft' 'delete mismatch fails before submission delete'
-    Assert-CallerSequence -LogHolder $deleteMismatchLog -Expected @('configure', 'get') -Message 'delete mismatch stops before delete'
+    Assert-CallerSequence -LogHolder $deleteMismatchLog -Expected @('reconfigure', 'get') -Message 'delete mismatch stops before delete'
     Assert-CallerProductId -LogHolder $deleteMismatchLog -ProductId $testProductId -Message 'delete mismatch preserves Product ID context'
 }
 finally {

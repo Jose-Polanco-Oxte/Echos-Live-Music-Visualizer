@@ -92,14 +92,20 @@ $secretValues = @(
         ForEach-Object { [string]$_ }
 )
 
-# Authenticate once via `msstore configure`.
+# Authenticate once via `msstore reconfigure`.
 $configureResult = Invoke-EchoMsStoreCli `
     -CliPath $CliPath `
-    -Arguments @('configure', '--json') `
+    -Arguments @(
+        'reconfigure',
+        '--tenantId', [Environment]::GetEnvironmentVariable('PARTNER_CENTER_TENANT_ID'),
+        '--sellerId', [Environment]::GetEnvironmentVariable('PARTNER_CENTER_SELLER_ID'),
+        '--clientId', [Environment]::GetEnvironmentVariable('PARTNER_CENTER_CLIENT_ID'),
+        '--clientSecret', [Environment]::GetEnvironmentVariable('PARTNER_CENTER_CLIENT_SECRET')
+    ) `
     -Environment $cliEnvironment `
     -SecretValues $secretValues
 if ($configureResult.ExitCode -ne 0) {
-    throw "msstore configure failed (exit $($configureResult.ExitCode))."
+    throw "msstore reconfigure failed (exit $($configureResult.ExitCode))."
 }
 
 # Target bundle identity from the verified release manifest and the exact
