@@ -78,8 +78,8 @@ function Invoke-EchoMsStoreCliProcess {
     $envSnapshot = @{}
     if ($Environment) {
         foreach ($entry in $Environment.GetEnumerator()) {
-            $envSnapshot[$entry.Key] = (Get-Item "Env:$($entry.Key)" -ErrorAction SilentlyContinue).Value
-            Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value
+            $envSnapshot[$entry.Key] = [System.Environment]::GetEnvironmentVariable($entry.Key)
+            [System.Environment]::SetEnvironmentVariable($entry.Key, $entry.Value)
         }
     }
     try {
@@ -106,10 +106,10 @@ function Invoke-EchoMsStoreCliProcess {
         if ($Environment) {
             foreach ($entry in $Environment.GetEnumerator()) {
                 if ($envSnapshot.ContainsKey($entry.Key) -and $null -ne $envSnapshot[$entry.Key]) {
-                    Set-Item -Path "Env:$($entry.Key)" -Value $envSnapshot[$entry.Key]
+                    [System.Environment]::SetEnvironmentVariable($entry.Key, $envSnapshot[$entry.Key])
                 }
                 else {
-                    Remove-Item -Path "Env:$($entry.Key)" -Force -ErrorAction SilentlyContinue
+                    [System.Environment]::SetEnvironmentVariable($entry.Key, $null)
                 }
             }
         }
