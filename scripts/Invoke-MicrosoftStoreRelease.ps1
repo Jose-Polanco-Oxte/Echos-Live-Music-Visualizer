@@ -138,7 +138,7 @@ if ($Operation -eq 'delete-target-draft') {
     }
     $deleteResult = Invoke-EchoMsStoreCli `
         -CliPath $CliPath `
-        -Arguments @('submission', 'delete', '--productid', $productId, '--json') `
+        -Arguments @('submission', 'delete', $productId, '--no-confirm') `
         -Environment $cliEnvironment `
         -SecretValues $secretValues
     if ($deleteResult.ExitCode -ne 0) {

@@ -455,8 +455,8 @@ $callerPreviousEnvironment = @{}
 function Get-CallerVerb {
     param([string[]]$Arguments)
     if ($Arguments -contains 'reconfigure') { return 'reconfigure' }
+    if ($Arguments -contains 'submission' -and $Arguments -contains 'publish') { return 'commit' }
     if ($Arguments -contains 'publish') { return 'publish' }
-    if ($Arguments -contains 'commit') { return 'commit' }
     if ($Arguments -contains 'delete') { return 'delete' }
     if ($Arguments -contains 'get') { return 'get' }
     return 'unknown'
@@ -481,8 +481,14 @@ function Assert-CallerProductId {
     foreach ($entry in $LogHolder.Entries) {
         $verb = Get-CallerVerb -Arguments $entry.Arguments
         if ($verb -in @('get', 'publish', 'commit', 'delete')) {
-            $productIdIndex = [Array]::IndexOf([string[]]$entry.Arguments, '--productid')
-            Assert-True ($productIdIndex -ge 0 -and $entry.Arguments[$productIdIndex + 1] -ceq $ProductId) "$Message ($verb)"
+            $hasProductId = ($entry.Arguments -contains $ProductId)
+            if (-not $hasProductId) {
+                $appIdIndex = [Array]::IndexOf([string[]]$entry.Arguments, '--appId')
+                if ($appIdIndex -ge 0 -and $entry.Arguments[$appIdIndex + 1] -ceq $ProductId) {
+                    $hasProductId = $true
+                }
+            }
+            Assert-True $hasProductId "$Message ($verb)"
         }
     }
 }

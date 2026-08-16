@@ -255,7 +255,7 @@ function Get-EchoStoreSubmissionState {
 
     $result = Invoke-EchoMsStoreCli `
         -CliPath $CliPath `
-        -Arguments @('submission', 'get', '--productid', $ProductId, '--json') `
+        -Arguments @('submission', 'get', $ProductId) `
         -Environment $Environment `
         -SecretValues $SecretValues
 
@@ -525,10 +525,10 @@ function Invoke-EchoStorePublish {
     return (Invoke-EchoMsStoreCli `
         -CliPath $CliPath `
         -Arguments @(
-            'publish', '--productid', $ProductId,
-            '--package', $BundlePath,
-            '--noCommit',
-            '--json'
+            'publish', '.',
+            '--inputFile', $BundlePath,
+            '--appId', $ProductId,
+            '--noCommit'
         ) `
         -Environment $Environment `
         -SecretValues $SecretValues)
@@ -543,9 +543,10 @@ function Invoke-EchoStoreCommit {
         [string[]]$SecretValues
     )
 
+    # In msstore CLI, committing / publishing a draft is performed via `msstore submission publish <productId>`.
     return (Invoke-EchoMsStoreCli `
         -CliPath $CliPath `
-        -Arguments @('commit', '--productid', $ProductId, '--json') `
+        -Arguments @('submission', 'publish', $ProductId) `
         -Environment $Environment `
         -SecretValues $SecretValues)
 }
