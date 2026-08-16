@@ -78,8 +78,8 @@ function Invoke-EchoMsStoreCliProcess {
     $envSnapshot = @{}
     if ($Environment) {
         foreach ($entry in $Environment.GetEnumerator()) {
-            $envSnapshot[$entry.Key] = (Get-Item "Env:$($entry.Key)" -ErrorAction SilentlyContinue).Value
-            Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value
+            $envSnapshot[$entry.Key] = [System.Environment]::GetEnvironmentVariable($entry.Key)
+            [System.Environment]::SetEnvironmentVariable($entry.Key, $entry.Value)
         }
     }
     try {
@@ -106,10 +106,10 @@ function Invoke-EchoMsStoreCliProcess {
         if ($Environment) {
             foreach ($entry in $Environment.GetEnumerator()) {
                 if ($envSnapshot.ContainsKey($entry.Key) -and $null -ne $envSnapshot[$entry.Key]) {
-                    Set-Item -Path "Env:$($entry.Key)" -Value $envSnapshot[$entry.Key]
+                    [System.Environment]::SetEnvironmentVariable($entry.Key, $envSnapshot[$entry.Key])
                 }
                 else {
-                    Remove-Item -Path "Env:$($entry.Key)" -Force -ErrorAction SilentlyContinue
+                    [System.Environment]::SetEnvironmentVariable($entry.Key, $null)
                 }
             }
         }
@@ -255,7 +255,7 @@ function Get-EchoStoreSubmissionState {
 
     $result = Invoke-EchoMsStoreCli `
         -CliPath $CliPath `
-        -Arguments @('submission', 'get', '--productid', $ProductId, '--json') `
+        -Arguments @('submission', 'get', $ProductId) `
         -Environment $Environment `
         -SecretValues $SecretValues
 
@@ -525,10 +525,10 @@ function Invoke-EchoStorePublish {
     return (Invoke-EchoMsStoreCli `
         -CliPath $CliPath `
         -Arguments @(
-            'publish', '--productid', $ProductId,
-            '--package', $BundlePath,
-            '--noCommit',
-            '--json'
+            'publish', '.',
+            '--inputFile', $BundlePath,
+            '--appId', $ProductId,
+            '--noCommit'
         ) `
         -Environment $Environment `
         -SecretValues $SecretValues)
@@ -543,9 +543,10 @@ function Invoke-EchoStoreCommit {
         [string[]]$SecretValues
     )
 
+    # In msstore CLI, committing / publishing a draft is performed via `msstore submission publish <productId>`.
     return (Invoke-EchoMsStoreCli `
         -CliPath $CliPath `
-        -Arguments @('commit', '--productid', $ProductId, '--json') `
+        -Arguments @('submission', 'publish', $ProductId) `
         -Environment $Environment `
         -SecretValues $SecretValues)
 }

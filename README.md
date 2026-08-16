@@ -7,6 +7,7 @@
   **Ultra-Low Latency, High-Fidelity Real-Time Audio Visualizer for Windows**
 
   [![Version](https://img.shields.io/badge/version-v0.2.0.19-cyan.svg?style=for-the-badge)](https://github.com/)
+  [![Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-9NJMJFH8J616-0078D4.svg?style=for-the-badge&logo=microsoft)](https://apps.microsoft.com/store/detail/9NJMJFH8J616?cid=DevShareMCLPCS)
   [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64%20%7C%20ARM64-blue.svg?style=for-the-badge)](https://microsoft.com)
   [![Framework](https://img.shields.io/badge/UI-WinUI%203%20%2F%20Windows%20App%20SDK-purple.svg?style=for-the-badge)](https://learn.microsoft.com/windows/apps/winui/winui3/)
   [![Engine](https://img.shields.io/badge/DSP-Rust%20FFI-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
@@ -40,7 +41,9 @@ Direct download requiring no formal installation or administrator privileges:
 ### 2. Microsoft Store (MSIX / Packaged)
 Recommended channel for secure automatic updates and seamless Store integration. Available now on the Microsoft Store:
 
-[![Download from Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-Download-0078D4.svg?style=for-the-badge)](https://apps.microsoft.com/store/detail/9NJMJFH8J616)
+[![Download from Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-Download-0078D4.svg?style=for-the-badge&logo=microsoft)](https://apps.microsoft.com/store/detail/9NJMJFH8J616?cid=DevShareMCLPCS)
+
+👉 [Get Echo Visualizer on Microsoft Store](https://apps.microsoft.com/store/detail/9NJMJFH8J616?cid=DevShareMCLPCS)
 
 Install from the Store for automatic, signed updates on both x64 and ARM64.
 

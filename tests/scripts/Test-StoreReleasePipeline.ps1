@@ -161,5 +161,17 @@ $terminalFail = Test-EchoStoreStateSafeToProceed -CurrentState 'CertificationFai
 Assert-Equal 'fail-closed' $terminalFail.Action 'terminal failure must fail closed'
 Assert-True (-not $terminalFail.Safe) 'terminal failure is not safe'
 
+# S5/Process: environment variable snapshot under StrictMode Latest
+$whereExe = [System.IO.Path]::Combine($env:SystemRoot, 'System32\where.exe')
+if (Test-Path -LiteralPath $whereExe) {
+    $envTestResult = Invoke-EchoMsStoreCliProcess `
+        -CliPath $whereExe `
+        -Arguments @('cmd.exe') `
+        -Environment @{ 'ECHO_TEST_CLI_ENV_VAR' = 'test_value_123' }
+    Assert-Equal 0 $envTestResult.ExitCode 'Invoke-EchoMsStoreCliProcess exit code'
+    Assert-True (($envTestResult.Stdout -join '') -match 'cmd\.exe') 'Invoke-EchoMsStoreCliProcess stdout'
+    Assert-True ([string]::IsNullOrEmpty([System.Environment]::GetEnvironmentVariable('ECHO_TEST_CLI_ENV_VAR'))) 'Invoke-EchoMsStoreCliProcess restores environment'
+}
+
 Write-Host 'Store submission state machine fixtures: PASS' -ForegroundColor Green
 Write-Host 'Store release pipeline version/configuration fixtures: PASS' -ForegroundColor Green
